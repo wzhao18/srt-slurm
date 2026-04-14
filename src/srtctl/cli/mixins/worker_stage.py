@@ -13,6 +13,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 from srtctl.core.fingerprint import generate_capture_script
+from srtctl.backends.base import BackendProtocol
 from srtctl.core.processes import ManagedProcess, NamedProcesses
 from srtctl.core.schema import build_otel_env
 from srtctl.core.slurm import get_hostname_ip, start_srun_process
@@ -40,7 +41,7 @@ class WorkerStageMixin:
     runtime: "RuntimeContext"
 
     @property
-    def backend(self) -> Any:
+    def backend(self) -> BackendProtocol:
         """Access the backend config (implements BackendProtocol)."""
         return self.config.backend
 
