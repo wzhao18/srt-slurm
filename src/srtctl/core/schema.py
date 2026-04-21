@@ -904,6 +904,10 @@ class DynamoConfig:
         version: Install specific version from PyPI (e.g., "0.8.0")
         hash: Clone repo and checkout specific commit hash
         top_of_tree: Clone repo at HEAD (latest)
+        git_url: Custom Git repo URL (e.g., "https://github.com/your-fork/dynamo.git")
+                 Only used with hash or top_of_tree. Defaults to official ai-dynamo repo.
+        git_branch: Git branch to checkout instead of hash. Only used with hash or top_of_tree.
+                    Cannot be used with hash parameter.
 
     If top_of_tree or hash is set, version is automatically cleared.
     """
@@ -912,6 +916,8 @@ class DynamoConfig:
     version: str | None = "0.8.0"
     hash: str | None = None
     top_of_tree: bool = False
+    git_url: str | None = None
+    git_branch: str | None = None
 
     def __post_init__(self) -> None:
         # Auto-clear version if hash or top_of_tree is set
@@ -921,6 +927,14 @@ class DynamoConfig:
         # Validate only one source option is set
         if self.hash is not None and self.top_of_tree:
             raise ValueError("Cannot specify both hash and top_of_tree")
+
+        # Validate git_branch is not used with hash
+        if self.hash is not None and self.git_branch is not None:
+            raise ValueError("Cannot specify both hash and git_branch")
+
+        # Validate git_branch is only used with source install
+        if self.git_branch is not None and not self.needs_source_install:
+            raise ValueError("git_branch can only be used with hash or top_of_tree")
 
     @property
     def needs_source_install(self) -> bool:
@@ -936,9 +950,18 @@ class DynamoConfig:
                 f"echo 'Dynamo {self.version} installed'"
             )
 
-        # Source install (hash or top-of-tree)
-        git_ref = self.hash if self.hash else "HEAD"
-        checkout_cmd = f"git checkout {self.hash}" if self.hash else ""
+        # Source install (hash, branch, or top-of-tree)
+        git_url = self.git_url or "https://github.com/ai-dynamo/dynamo.git"
+
+        if self.git_branch is not None:
+            git_ref = self.git_branch
+            checkout_cmd = f"git checkout {self.git_branch}"
+        elif self.hash is not None:
+            git_ref = self.hash
+            checkout_cmd = f"git checkout {self.hash}"
+        else:
+            git_ref = "HEAD"
+            checkout_cmd = ""
 
         # Original SGLang container path
         sglang = (
@@ -946,7 +969,7 @@ class DynamoConfig:
             "if ! command -v cargo &>/dev/null; then curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable -q && source $HOME/.cargo/env; fi && "
             "if ! command -v maturin &>/dev/null; then pip install --break-system-packages maturin; fi && "
             "cd /sgl-workspace/ && "
-            "git clone https://github.com/ai-dynamo/dynamo.git && "
+            f"git clone {git_url} && "
             "cd dynamo && "
             f"{checkout_cmd + ' && ' if checkout_cmd else ''}"
             "cd lib/bindings/python/ && "
@@ -968,7 +991,7 @@ class DynamoConfig:
             "if ! command -v maturin &> /dev/null; then "
             "pip install --break-system-packages maturin; fi; fi && "
             "ORIG_DIR=$(pwd) && rm -rf /tmp/dynamo_build && mkdir -p /tmp/dynamo_build && cd /tmp/dynamo_build && "
-            "git clone https://github.com/ai-dynamo/dynamo.git && "
+            f"git clone {git_url} && "
             "cd dynamo && "
             f"{checkout_cmd + ' && ' if checkout_cmd else ''}"
             "cd lib/bindings/python/ && "

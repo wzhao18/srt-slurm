@@ -205,6 +205,78 @@ class TestDynamoConfig:
         with pytest.raises(ValueError, match="Cannot specify both"):
             DynamoConfig(hash="abc123", top_of_tree=True)
 
+    def test_git_branch_with_top_of_tree(self):
+        """git_branch can be used with top_of_tree."""
+        from srtctl.core.schema import DynamoConfig
+
+        config = DynamoConfig(top_of_tree=True, git_branch="my-branch")
+        assert config.version is None
+        assert config.top_of_tree is True
+        assert config.git_branch == "my-branch"
+        assert config.needs_source_install
+
+    def test_git_branch_install_command(self):
+        """git_branch generates source install command with branch checkout."""
+        from srtctl.core.schema import DynamoConfig
+
+        config = DynamoConfig(top_of_tree=True, git_branch="my-branch")
+        cmd = config.get_install_commands()
+        assert "git clone" in cmd
+        assert "git checkout my-branch" in cmd
+        assert "maturin build" in cmd
+
+    def test_custom_git_url_with_branch(self):
+        """Custom git_url can be used with git_branch."""
+        from srtctl.core.schema import DynamoConfig
+
+        config = DynamoConfig(
+            top_of_tree=True,
+            git_url="https://github.com/my-fork/dynamo.git",
+            git_branch="feature-branch",
+        )
+        cmd = config.get_install_commands()
+        assert "https://github.com/my-fork/dynamo.git" in cmd
+        assert "git checkout feature-branch" in cmd
+
+    def test_custom_git_url_with_hash(self):
+        """Custom git_url can be used with hash."""
+        from srtctl.core.schema import DynamoConfig
+
+        config = DynamoConfig(
+            hash="abc123",
+            git_url="https://github.com/my-fork/dynamo.git",
+        )
+        assert config.version is None
+        cmd = config.get_install_commands()
+        assert "https://github.com/my-fork/dynamo.git" in cmd
+        assert "git checkout abc123" in cmd
+
+    def test_custom_git_url_with_top_of_tree(self):
+        """Custom git_url can be used with top_of_tree (no checkout)."""
+        from srtctl.core.schema import DynamoConfig
+
+        config = DynamoConfig(
+            top_of_tree=True,
+            git_url="https://github.com/my-fork/dynamo.git",
+        )
+        cmd = config.get_install_commands()
+        assert "https://github.com/my-fork/dynamo.git" in cmd
+        assert "git checkout" not in cmd
+
+    def test_git_branch_not_allowed_with_hash(self):
+        """Cannot specify both hash and git_branch."""
+        from srtctl.core.schema import DynamoConfig
+
+        with pytest.raises(ValueError, match="Cannot specify both hash and git_branch"):
+            DynamoConfig(hash="abc123", git_branch="my-branch")
+
+    def test_git_branch_requires_source_install(self):
+        """git_branch cannot be used without top_of_tree or hash."""
+        from srtctl.core.schema import DynamoConfig
+
+        with pytest.raises(ValueError, match="git_branch can only be used"):
+            DynamoConfig(version="0.8.0", git_branch="my-branch")
+
 
 class TestSGLangProtocol:
     """Tests for SGLangProtocol."""
