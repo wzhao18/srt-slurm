@@ -192,6 +192,35 @@ class TestAllocateEndpoints:
         # Decode should start at node2, not node1
         assert decode_eps[0].nodes[0] == "node2"
 
+    def test_prefill_decode_share_single_node_when_no_decode_nodes(self):
+        """Prefill and decode colocate on the same node when only one node is available.
+
+        Models the `decode_nodes: 0` recipe pattern: 1 prefill + 1 decode worker
+        sharing a single 8-GPU node (1 GPU prefill + 2 GPUs decode = 3 GPUs total).
+        The "never share node" guard in allocate_endpoints checks
+        `(node_idx + 1) < len(available_nodes)` and intentionally allows sharing
+        when no further nodes exist.
+        """
+        endpoints = allocate_endpoints(
+            num_prefill=1,
+            num_decode=1,
+            num_agg=0,
+            gpus_per_prefill=1,
+            gpus_per_decode=2,
+            gpus_per_agg=0,
+            gpus_per_node=8,
+            available_nodes=("node0",),
+        )
+
+        prefill_eps = [e for e in endpoints if e.mode == "prefill"]
+        decode_eps = [e for e in endpoints if e.mode == "decode"]
+
+        assert prefill_eps[0].nodes == ("node0",)
+        assert prefill_eps[0].gpu_indices == frozenset({0})
+
+        assert decode_eps[0].nodes == ("node0",)
+        assert decode_eps[0].gpu_indices == frozenset({1, 2})
+
     def test_prefill_decode_never_share_node_single_partial_prefill(self):
         """Test prefill/decode separation when only one prefill worker uses partial node."""
         endpoints = allocate_endpoints(
