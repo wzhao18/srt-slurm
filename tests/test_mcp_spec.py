@@ -80,7 +80,7 @@ def test_preflight_config_reports_missing_container(tmp_path) -> None:
             "name": "mcp-test",
             "model": {
                 "path": str(model_dir),
-                "container": "missing-container",
+                "container": "/nonexistent/missing.sqsh",
                 "precision": "bf16",
             },
             "resources": {

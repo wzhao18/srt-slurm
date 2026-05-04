@@ -190,13 +190,29 @@ def _preflight_container(
             [issue],
         )
 
-    ok, detail = _check_path(_expand_path(resolved), expect="file")
+    expanded = _expand_path(resolved)
+    # Mirror runtime.py: values without a /, ./ prefix are registry refs that
+    # pyxis will pull at srun time. Defer instead of failing preflight.
+    if not expanded.startswith(("/", "./")):
+        return (
+            PreflightResolution(
+                field="model.container",
+                raw=raw,
+                resolved=resolved,
+                source=source,
+                ok=True,
+                message=f"registry image (deferred to pyxis): {resolved}",
+            ),
+            [],
+        )
+
+    ok, detail = _check_path(expanded, expect="file")
     if ok:
         return (
             PreflightResolution(
                 field="model.container",
                 raw=raw,
-                resolved=str(Path(_expand_path(resolved)).resolve()),
+                resolved=str(Path(expanded).resolve()),
                 source=source,
                 ok=True,
                 message=detail,

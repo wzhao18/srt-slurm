@@ -344,7 +344,7 @@ class TestPreflightConfigVariants:
                 "name": "bad-container",
                 "model": {
                     "path": str(model_dir),
-                    "container": "nvcr.io/fake:latest",
+                    "container": "/nonexistent/fake.sqsh",
                     "precision": "bf16",
                 },
                 "resources": {
