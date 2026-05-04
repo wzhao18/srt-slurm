@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 from srtctl.benchmarks.base import SCRIPTS_DIR
 from srtctl.core.config import load_cluster_config
+from srtctl.core.iteration_metrics import extract_and_plot as extract_iteration_metrics
 from srtctl.core.lockfile import collect_worker_fingerprints, generate_reproduction_report, write_lockfile
 from srtctl.core.schema import AIAnalysisConfig, S3Config
 from srtctl.core.slurm import start_srun_process
@@ -120,6 +121,19 @@ class PostProcessStageMixin:
             return config_value
         return os.environ.get(env_var)
 
+    def _iteration_logging_enabled(self) -> bool:
+        """True if any vllm mode enabled `enable-logging-iteration-details`.
+
+        Only vllm exposes that flag; other backends return False unconditionally.
+        """
+        vllm_config = getattr(self.config.backend, "vllm_config", None)
+        if not vllm_config:
+            return False
+        for mode_cfg in (vllm_config.prefill, vllm_config.decode, vllm_config.aggregated):
+            if mode_cfg and mode_cfg.get("enable-logging-iteration-details"):
+                return True
+        return False
+
     def _copy_config_to_logs(self) -> None:
         """Copy job artifacts into the log directory so they're included in S3 uploads.
 
@@ -189,6 +203,15 @@ class PostProcessStageMixin:
 
         # Compare against previous lockfile if this was a lockfile re-run
         self._compare_against_previous_lock()
+
+        # Extract per-worker iteration metrics if any vllm worker enabled
+        # `enable-logging-iteration-details`. Runs before the S3 upload so the
+        # generated PNGs/JSON are included in the synced artifacts.
+        if self._iteration_logging_enabled():
+            try:
+                extract_iteration_metrics(self.runtime.log_dir)
+            except Exception as e:
+                logger.warning("Iteration metrics extraction failed: %s", e)
 
         # Run srtlog + S3 upload in single container (if S3 configured)
         _parquet_path, s3_url = self._run_postprocess_container()
