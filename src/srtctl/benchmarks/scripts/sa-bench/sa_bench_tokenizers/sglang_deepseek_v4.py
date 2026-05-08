@@ -88,6 +88,25 @@ class SGLangDeepseekV4Tokenizer:
     def __init__(self, hf_tokenizer):
         self._hf = hf_tokenizer
 
+    def __call__(self, *args, **kwargs):
+        # sa-bench's calculate_metrics (benchmark_serving.py) calls
+        # ``tokenizer(text, add_special_tokens=False)`` to count generated
+        # tokens. Without this delegation the wrapper isn't callable and
+        # the benchmark fails with ``TypeError: 'SGLangDeepseekV4Tokenizer'
+        # object is not callable``. Mirrors what vllm_deepseek_v4.py
+        # achieves by returning the HF subclass directly.
+        return self._hf(*args, **kwargs)
+
+    def __getattr__(self, name):
+        # Proxy any non-overridden attribute (``encode``, ``pad_token``,
+        # etc.) through to the wrapped HF tokenizer so downstream callers
+        # that expect a full ``PreTrainedTokenizerFast`` API work without
+        # knowing about this wrapper. ``apply_chat_template`` is defined
+        # below and wins via normal attribute lookup before ``__getattr__``.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self._hf, name)
+
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: str, **kwargs):
         # DeepSeek-V4 ships a fast tokenizer.json but no tokenization_*.py,
