@@ -160,6 +160,9 @@ class VLLMProtocol:
     # vLLM server CLI config per mode
     vllm_config: VLLMServerConfig | None = None
 
+    # Legacy device binding for vLLM builds without --device-ids.
+    set_cuda_visible_devices: bool = False
+
     # Default KV connector: "nixl", "lmcache", or a raw JSON string for --kv-transfer-config.
     # Can be overridden per mode by setting "connector" in vllm_config.prefill/decode/aggregated.
     # dynamo 1.0.0+: translated to --kv-transfer-config (--connector was removed).
@@ -404,6 +407,15 @@ class VLLMProtocol:
         config = self.get_config_for_mode(mode)
         return config.get("data-parallel-size") or config.get("data_parallel_size")
 
+    def should_set_cuda_visible_devices(self, process: Process) -> bool:
+        """Whether worker_stage should set CUDA_VISIBLE_DEVICES.
+
+        Newer vLLM builds should use ``--device-ids`` instead. Older builds
+        before https://github.com/vllm-project/vllm/pull/45026 should set
+        CUDA_VISIBLE_DEVICES.
+        """
+        return self.set_cuda_visible_devices
+
     def endpoints_to_processes(
         self,
         endpoints: list[Endpoint],
@@ -572,9 +584,13 @@ class VLLMProtocol:
             kv_transfer_cfg = _connector_to_kv_transfer_config(connector)
             cmd.extend(["--kv-transfer-config", kv_transfer_cfg])
 
+        if not self.set_cuda_visible_devices:
+            device_ids = ",".join(str(i) for i in sorted(process.gpu_indices))
+            if device_ids:
+                cmd.extend(["--device-ids", device_ids])
+
         # Check if this is DP+EP mode (data-parallel-size set)
         is_dp_mode = self._is_dp_mode(mode)
-
         if is_dp_mode:
             # DP+EP mode: each GPU runs its own process
             # process.node_rank is the dp_rank (set in endpoints_to_processes)
