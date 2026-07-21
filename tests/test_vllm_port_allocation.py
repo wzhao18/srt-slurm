@@ -8,11 +8,11 @@ from srtctl.core.topology import Process
 from srtctl.ports import DYN_SYSTEM_PORT_BASE, VLLM_PORT_BASE, VLLM_PORT_STRIDE
 
 
-def _process(sys_port: int) -> Process:
+def _process(sys_port: int, gpu_indices: frozenset[int] = frozenset({0})) -> Process:
     """A minimal vLLM worker process (nixl_port=None so no host lookup runs)."""
     return Process(
         node="node0",
-        gpu_indices=frozenset({0}),
+        gpu_indices=gpu_indices,
         sys_port=sys_port,
         http_port=0,
         endpoint_mode="decode",
@@ -45,3 +45,19 @@ def test_vllm_port_clamps_when_sys_port_below_anchor():
     env = backend.get_process_environment(_process(DYN_SYSTEM_PORT_BASE - 10))
 
     assert env["VLLM_PORT"] == str(VLLM_PORT_BASE)
+
+
+def test_vllm_port_unset_for_multi_gpu_process():
+    """Multi-GPU processes must not pin VLLM_PORT.
+
+    A multi-GPU process runs vLLM's internal multiproc executor. In a
+    multi-node TP group the remote-node worker subprocesses all read this one
+    VLLM_PORT and race to bind the shm-broadcast port from the shared base,
+    crashing with EADDRINUSE. Leaving it unset lets them fall back to
+    OS-assigned ephemeral ports.
+    """
+    backend = VLLMProtocol()
+
+    env = backend.get_process_environment(_process(DYN_SYSTEM_PORT_BASE, gpu_indices=frozenset({0, 1})))
+
+    assert "VLLM_PORT" not in env
