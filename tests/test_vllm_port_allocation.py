@@ -45,3 +45,35 @@ def test_vllm_port_clamps_when_sys_port_below_anchor():
     env = backend.get_process_environment(_process(DYN_SYSTEM_PORT_BASE - 10))
 
     assert env["VLLM_PORT"] == str(VLLM_PORT_BASE)
+
+
+def _multi_gpu_process(sys_port: int, gpus: frozenset[int]) -> Process:
+    """A vLLM worker process that owns multiple GPUs (internal multiproc TP)."""
+    return Process(
+        node="node0",
+        gpu_indices=gpus,
+        sys_port=sys_port,
+        http_port=0,
+        endpoint_mode="agg",
+        endpoint_index=0,
+    )
+
+
+def test_vllm_port_set_only_for_single_gpu_processes():
+    """Multi-GPU processes must NOT pin VLLM_PORT.
+
+    A multi-GPU process runs vLLM's internal multiproc executor whose same-node
+    worker subprocesses all read one VLLM_PORT. In a multi-node TP group the
+    remote-node subprocesses then race to bind the shm-broadcast port from that
+    shared base and crash with EADDRINUSE (the TP8 aggregate). Omitting
+    VLLM_PORT lets them fall back to OS-assigned ephemeral ports.
+    """
+    backend = VLLMProtocol()
+
+    single = backend.get_process_environment(_process(DYN_SYSTEM_PORT_BASE + 1))
+    multi = backend.get_process_environment(
+        _multi_gpu_process(DYN_SYSTEM_PORT_BASE + 1, frozenset({0, 1, 2, 3}))
+    )
+
+    assert single["VLLM_PORT"] == str(VLLM_PORT_BASE + VLLM_PORT_STRIDE)
+    assert "VLLM_PORT" not in multi

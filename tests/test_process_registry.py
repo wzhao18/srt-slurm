@@ -42,8 +42,8 @@ class TestManagedProcess:
             log_file=Path("/tmp/test.log"),
         )
 
-        # exit_code comes from popen.returncode
-        assert mock_popen.returncode == 1
+        # exit_code comes from popen.poll()
+        assert mp.exit_code == 1
 
 
 class TestProcessRegistry:
@@ -121,6 +121,45 @@ class TestProcessRegistry:
 
         registry.add_process(mp)
         assert registry.check_failures()
+
+    def test_check_failures_detects_fatal_log_marker_while_alive(self, tmp_path):
+        """A still-running critical worker that logged a fatal engine failure
+        (hung worker, e.g. dynamo keeps its runtime up after EngineCore dies) is
+        detected without waiting for the process to exit."""
+        registry = ProcessRegistry(job_id="test_job")
+
+        log_file = tmp_path / "agg_w0.out"
+        log_file.write_text(
+            "INFO loading weights...\n"
+            "(EngineCore pid=1) ERROR [core.py:1231] EngineCore failed to start.\n"
+        )
+
+        mock_popen = MagicMock(spec=Popen)
+        mock_popen.poll.return_value = None  # still running (hung)
+        mock_popen.pid = 12345
+
+        registry.add_process(
+            ManagedProcess(name="agg_w0", popen=mock_popen, log_file=log_file, critical=True)
+        )
+
+        assert registry.check_failures()
+
+    def test_check_failures_ignores_clean_log_while_alive(self, tmp_path):
+        """A running worker with no fatal marker is not flagged."""
+        registry = ProcessRegistry(job_id="test_job")
+
+        log_file = tmp_path / "agg_w0.out"
+        log_file.write_text("INFO loading weights...\nINFO Model loading took 100s\n")
+
+        mock_popen = MagicMock(spec=Popen)
+        mock_popen.poll.return_value = None
+        mock_popen.pid = 12345
+
+        registry.add_process(
+            ManagedProcess(name="agg_w0", popen=mock_popen, log_file=log_file, critical=True)
+        )
+
+        assert not registry.check_failures()
 
     def test_cleanup(self):
         """Test cleanup terminates all processes."""
