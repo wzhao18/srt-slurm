@@ -17,6 +17,7 @@ import functools
 import json
 import logging
 import os
+import shlex
 import subprocess
 import sys
 import threading
@@ -61,6 +62,24 @@ from srtctl.ports import (
 logger = logging.getLogger(__name__)
 
 
+def _build_setup_script_preamble(setup_script: object) -> str | None:
+    """Bash preamble that runs config.setup_script from /configs, mirroring the
+    worker/frontend launch path. Returns None when no setup_script is configured.
+    """
+    if not isinstance(setup_script, str) or not setup_script:
+        return None
+    script_name = shlex.quote(setup_script)
+    return (
+        f"setup_script={script_name} && "
+        'script_path="/configs/${setup_script}" && '
+        'patch_script_path="/configs/patches/${setup_script}" && '
+        'echo "Running setup script: ${script_path} (fallback ${patch_script_path})" && '
+        'if [ -f "${script_path}" ]; then bash "${script_path}"; '
+        'elif [ -f "${patch_script_path}" ]; then bash "${patch_script_path}"; '
+        'else echo "WARNING: ${script_path} or ${patch_script_path} not found"; fi'
+    )
+
+
 def _build_mooncake_master_command(mooncake_cfg: object) -> list[str]:
     """Build the master command, including recipe-provided version-specific flags."""
     command = [
@@ -69,7 +88,7 @@ def _build_mooncake_master_command(mooncake_cfg: object) -> list[str]:
         "--enable_http_metadata_server=true",
         f"--http_metadata_server_port={MOONCAKE_HTTP_METADATA_PORT}",
         "--eviction_high_watermark_ratio=0.9",
-        "--default_kv_lease_ttl=10000",
+        "--default_kv_lease_ttl=60000",
         "--rpc_thread_num=16",
         "--enable_metric_reporting=true",
         f"--metrics_port={MOONCAKE_METRICS_PORT}",
@@ -255,12 +274,19 @@ class SweepOrchestrator(
             MOONCAKE_METRICS_PORT,
         )
 
+        # Run the same setup_script as workers before launching the master, so a
+        # container whose stock mooncake_master is ABI-mismatched (e.g. CUDA-12
+        # binary needing libcudart.so.12 on a cuda13 image) gets the correct
+        # mooncake wheel installed first. /configs is mounted on the master.
+        bash_preamble = _build_setup_script_preamble(getattr(self.config, "setup_script", None))
+
         proc = start_srun_process(
             command=_build_mooncake_master_command(mooncake_cfg),
             nodelist=[infra_node],
             output=str(mooncake_log),
             container_image=container,
             container_mounts=self.runtime.container_mounts,
+            bash_preamble=bash_preamble,
             het_group=self.runtime.nodes.het_group_for(infra_node),
         )
 
@@ -273,21 +299,21 @@ class SweepOrchestrator(
         )
 
         logger.info("Waiting for mooncake_master RPC (port %d) on %s...", MOONCAKE_MASTER_PORT, infra_node)
-        if not wait_for_port(infra_node, MOONCAKE_MASTER_PORT, timeout=120):
+        if not wait_for_port(infra_node, MOONCAKE_MASTER_PORT, timeout=1800):
             raise RuntimeError("mooncake_master RPC failed to start")
         logger.info(
             "Waiting for mooncake_master HTTP metadata (port %d) on %s...",
             MOONCAKE_HTTP_METADATA_PORT,
             infra_node,
         )
-        if not wait_for_port(infra_node, MOONCAKE_HTTP_METADATA_PORT, timeout=120):
+        if not wait_for_port(infra_node, MOONCAKE_HTTP_METADATA_PORT, timeout=1800):
             raise RuntimeError("mooncake_master HTTP metadata server failed to start")
         logger.info(
             "Waiting for mooncake_master metrics (port %d) on %s...",
             MOONCAKE_METRICS_PORT,
             infra_node,
         )
-        if not wait_for_port(infra_node, MOONCAKE_METRICS_PORT, timeout=120):
+        if not wait_for_port(infra_node, MOONCAKE_METRICS_PORT, timeout=1800):
             raise RuntimeError("mooncake_master metrics server failed to start")
         logger.info("mooncake_master is ready")
 
