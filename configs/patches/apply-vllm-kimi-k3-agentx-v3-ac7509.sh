@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Port wzhao/kimi-k3-agentx-v2@face29e65 runtime changes onto the Aug 13
+# Port wzhao/kimi-k3-agentx-v3@75c2eef602 runtime changes onto the ac7509e2b1
 # nightly in place.
 
 set -euo pipefail
@@ -7,8 +7,8 @@ set -euo pipefail
 readonly SITE_PACKAGES="${VLLM_SITE_PACKAGES:-/usr/local/lib/python3.12/dist-packages}"
 readonly VLLM_ROOT="${SITE_PACKAGES}/vllm"
 readonly VERSION_FILE="${VLLM_ROOT}/_version.py"
-readonly PATCH_FILE="${VLLM_DCP_PATCH_FILE:-/configs/patches/vllm-wzhao-kimi-k3-agentx-v2-on-nightly-aug13.patch}"
-readonly MARKER_FILE="${VLLM_ROOT}/.wzhao_kimi_k3_agentx_v2_face29e65_on_g3d204dfda"
+readonly PATCH_FILE="${VLLM_DCP_PATCH_FILE:-/configs/patches/vllm-wzhao-kimi-k3-agentx-v3-on-nightly-ac7509.patch}"
+readonly MARKER_FILE="${VLLM_ROOT}/.wzhao_kimi_k3_agentx_v3_75c2eef602_on_gac7509e2b"
 
 if [[ -f "${MARKER_FILE}" ]]; then
   echo "Kimi-K3 DCP runtime patch is already applied."
@@ -20,8 +20,8 @@ if [[ ! -r "${PATCH_FILE}" ]]; then
   exit 1
 fi
 
-if [[ ! -r "${VERSION_FILE}" ]] || ! grep -q "g3d204dfda" "${VERSION_FILE}"; then
-  echo "Refusing to patch: expected nightly-aug13 vLLM commit g3d204dfda." >&2
+if [[ ! -r "${VERSION_FILE}" ]] || ! grep -q "gac7509e2b" "${VERSION_FILE}"; then
+  echo "Refusing to patch: expected vLLM nightly commit gac7509e2b." >&2
   echo "Version file: ${VERSION_FILE}" >&2
   exit 1
 fi
@@ -35,11 +35,5 @@ else
   exit 1
 fi
 
-python3 -m compileall -q \
-  "${VLLM_ROOT}/config/speculative.py" \
-  "${VLLM_ROOT}/distributed/kv_transfer" \
-  "${VLLM_ROOT}/models/kimi_k3" \
-  "${VLLM_ROOT}/v1"
-
 touch "${MARKER_FILE}"
-echo "Applied Kimi-K3 DCP runtime patch to nightly-aug13."
+echo "Applied Kimi-K3 agentx-v3 runtime patch to nightly-ac7509e2b."
