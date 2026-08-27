@@ -1984,7 +1984,7 @@ class TestVLLMDataParallelMode:
         ]
 
     def test_dp_per_node_mode_rejects_dp_size_mismatch(self):
-        """The configured global DP size must match the allocated GPUs."""
+        """The configured global DP size must match allocated model replicas."""
         from srtctl.backends import VLLMProtocol, VLLMServerConfig
         from srtctl.core.topology import Endpoint
 
@@ -2002,6 +2002,71 @@ class TestVLLMDataParallelMode:
 
         with pytest.raises(ValueError, match="data-parallel-size=7"):
             backend.endpoints_to_processes([endpoint])
+
+    def test_dp_per_node_mode_supports_tensor_parallel_ranks(self):
+        """Per-node DP derives rank counts after accounting for TP width."""
+        from srtctl.backends import VLLMProtocol, VLLMServerConfig
+        from srtctl.core.topology import Endpoint
+
+        backend = VLLMProtocol(
+            dp_launch_mode="per_node",
+            vllm_config=VLLMServerConfig(
+                decode={
+                    "tensor-parallel-size": 2,
+                    "data-parallel-size": 4,
+                    "enable-expert-parallel": True,
+                },
+            ),
+        )
+        endpoint = Endpoint(
+            mode="decode",
+            index=0,
+            nodes=("node0", "node1"),
+            gpu_indices=frozenset(range(4)),
+            gpus_per_node=4,
+        )
+
+        processes = backend.endpoints_to_processes([endpoint])
+
+        assert [process.node_rank for process in processes] == [0, 2]
+        assert [process.kv_events_port for process in processes] == [
+            KV_EVENTS_PORT_BASE,
+            KV_EVENTS_PORT_BASE + 2,
+        ]
+
+    def test_dp_multinode_mode_spans_model_replicas_across_nodes(self):
+        """Multinode DP keeps one process per node for cross-node TP ranks."""
+        from srtctl.backends import VLLMProtocol, VLLMServerConfig
+        from srtctl.core.topology import Endpoint
+
+        backend = VLLMProtocol(
+            dp_launch_mode="multinode",
+            vllm_config=VLLMServerConfig(
+                aggregated={
+                    "tensor-parallel-size": 8,
+                    "data-parallel-size": 2,
+                    "enable-expert-parallel": True,
+                },
+            ),
+        )
+        endpoint = Endpoint(
+            mode="agg",
+            index=0,
+            nodes=("node0", "node1", "node2", "node3"),
+            gpu_indices=frozenset(range(4)),
+            gpus_per_node=4,
+        )
+
+        processes = backend.endpoints_to_processes([endpoint])
+
+        assert [process.node for process in processes] == [
+            "node0",
+            "node1",
+            "node2",
+            "node3",
+        ]
+        assert [process.node_rank for process in processes] == [0, 1, 2, 3]
+        assert all(process.gpu_indices == frozenset(range(4)) for process in processes)
 
     def test_dp_per_node_mode_rejects_headless(self):
         """Headless node processes cannot satisfy per-node Dynamo health expectations."""
@@ -2193,6 +2258,97 @@ class TestVLLMDataParallelMode:
         assert cmd[cmd.index("--data-parallel-rpc-port") + 1] == str(VLLM_DATA_PARALLEL_RPC_PORT)
         assert "--data-parallel-rank" not in cmd
         assert "--headless" not in cmd
+
+    def test_dp_per_node_hybrid_command_accounts_for_tensor_parallel_size(self):
+        """The local DP rank count excludes GPUs assigned to tensor parallelism."""
+        from unittest.mock import MagicMock, patch
+
+        from srtctl.backends import VLLMProtocol, VLLMServerConfig
+        from srtctl.core.topology import Process
+
+        backend = VLLMProtocol(
+            dp_launch_mode="per_node",
+            vllm_config=VLLMServerConfig(
+                decode={
+                    "tensor-parallel-size": 2,
+                    "data-parallel-size": 4,
+                    "enable-expert-parallel": True,
+                },
+            ),
+        )
+        leader = Process(
+            node="node0",
+            gpu_indices=frozenset(range(4)),
+            sys_port=8081,
+            http_port=6100,
+            endpoint_mode="decode",
+            endpoint_index=0,
+            node_rank=0,
+        )
+        process = Process(
+            node="node1",
+            gpu_indices=frozenset(range(4)),
+            sys_port=8082,
+            http_port=6100,
+            endpoint_mode="decode",
+            endpoint_index=0,
+            node_rank=2,
+        )
+        runtime = MagicMock()
+        runtime.model_path = Path("/model")
+        runtime.is_hf_model = False
+        runtime.request_plane = "tcp"
+
+        with patch("srtctl.core.slurm.get_hostname_ip", return_value="10.0.0.1"):
+            cmd = backend.build_worker_command(process, [leader, process], runtime)
+
+        assert cmd[cmd.index("--data-parallel-size-local") + 1] == "2"
+        assert cmd[cmd.index("--data-parallel-start-rank") + 1] == "2"
+
+    def test_dp_multinode_command_uses_world_node_rank(self):
+        """Multinode DP lets vLLM infer DP replicas from global node ranks."""
+        from unittest.mock import MagicMock, patch
+
+        from srtctl.backends import VLLMProtocol, VLLMServerConfig
+        from srtctl.core.topology import Process
+
+        backend = VLLMProtocol(
+            dp_launch_mode="multinode",
+            vllm_config=VLLMServerConfig(
+                aggregated={
+                    "tensor-parallel-size": 8,
+                    "data-parallel-size": 2,
+                    "enable-expert-parallel": True,
+                },
+            ),
+        )
+        processes = [
+            Process(
+                node=f"node{rank}",
+                gpu_indices=frozenset(range(4)),
+                sys_port=8081 + rank,
+                http_port=6100 if rank == 0 else 0,
+                endpoint_mode="agg",
+                endpoint_index=0,
+                node_rank=rank,
+            )
+            for rank in range(4)
+        ]
+        runtime = MagicMock()
+        runtime.model_path = Path("/model")
+        runtime.is_hf_model = False
+        runtime.request_plane = "tcp"
+
+        with patch("srtctl.core.slurm.get_hostname_ip", return_value="10.0.0.1"):
+            cmd = backend.build_worker_command(processes[2], processes, runtime)
+
+        assert cmd[cmd.index("--nnodes") + 1] == "4"
+        assert cmd[cmd.index("--node-rank") + 1] == "2"
+        assert cmd[cmd.index("--data-parallel-size") + 1] == "2"
+        assert cmd[cmd.index("--tensor-parallel-size") + 1] == "8"
+        assert "--headless" in cmd
+        assert "--data-parallel-rank" not in cmd
+        assert "--data-parallel-size-local" not in cmd
 
     def test_dp_per_node_forces_hybrid_lb_for_follower(self):
         """Per-node DP keeps every node process registered with Dynamo."""

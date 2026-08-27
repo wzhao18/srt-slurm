@@ -101,6 +101,27 @@ def test_dynamo_vllm_per_node_aggregated_counts_node_processes():
     assert count_desc == "0P + 2D Dynamo generate instances; logical workers: 1 agg"
 
 
+def test_dynamo_vllm_multinode_dp_counts_logical_workers():
+    """Multinode DP registers one leader while vLLM balances its DP ranks."""
+    vllm_config = SimpleNamespace(
+        prefill=None,
+        decode=None,
+        aggregated={"data-parallel-size": 2},
+    )
+    config = _config(
+        "dynamo",
+        "vllm",
+        num_agg=1,
+        vllm_config=vllm_config,
+        dp_launch_mode="multinode",
+    )
+
+    n_prefill, n_decode, count_desc, num_workers = _get_health_expectations(config)
+
+    assert (n_prefill, n_decode, num_workers) == (0, 1, 1)
+    assert count_desc == "0P + 1D Dynamo generate instances; logical workers: 1 agg"
+
+
 def test_dynamo_vllm_without_dp_config_defaults_to_logical_counts():
     """No data-parallel-size configured -> DP size 1 -> counts equal logical workers."""
     vllm_config = SimpleNamespace(prefill={}, decode={}, aggregated=None)

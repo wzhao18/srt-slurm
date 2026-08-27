@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 
 # Type alias for worker modes
 WorkerMode = Literal["prefill", "decode", "agg"]
-DPLaunchMode = Literal["per_gpu", "per_node"]
+DPLaunchMode = Literal["per_gpu", "per_node", "multinode"]
 
 logger = logging.getLogger(__name__)
 
@@ -231,6 +231,9 @@ class VLLMProtocol:
                 "and will become the default in a future release; set backend.dp_launch_mode: per_node now",
                 modes,
             )
+            return
+
+        if self.dp_launch_mode == "multinode":
             return
 
         hybrid_lb_modes: list[str] = []
@@ -478,6 +481,13 @@ class VLLMProtocol:
         config = self.get_config_for_mode(mode)
         return config.get("data-parallel-size") or config.get("data_parallel_size")
 
+    def _get_model_parallel_size(self, mode: WorkerMode) -> int:
+        """Get the number of GPUs assigned to each data-parallel rank."""
+        config = self.get_config_for_mode(mode)
+        tp_size = config.get("tensor-parallel-size") or config.get("tensor_parallel_size", 1)
+        pp_size = config.get("pipeline-parallel-size") or config.get("pipeline_parallel_size", 1)
+        return int(tp_size) * int(pp_size)
+
     def should_set_cuda_visible_devices(self, process: Process) -> bool:
         """Whether worker_stage should set CUDA_VISIBLE_DEVICES.
 
@@ -509,6 +519,24 @@ class VLLMProtocol:
 
         if self.dp_launch_mode == "per_node":
             return self._dp_per_node_endpoints_to_processes(
+                endpoints,
+                base_sys_port=base_sys_port,
+                port_allocator=port_allocator,
+            )
+
+        if self.dp_launch_mode == "multinode":
+            for endpoint in endpoints:
+                if not self._is_dp_mode(endpoint.mode):
+                    continue
+                model_parallel_size = self._get_model_parallel_size(endpoint.mode)
+                dp_size = self._get_dp_size(endpoint.mode)
+                if dp_size is None or endpoint.total_gpus != dp_size * model_parallel_size:
+                    raise ValueError(
+                        f"{endpoint.mode} endpoint has {endpoint.total_gpus} GPUs, but "
+                        f"data-parallel-size={dp_size} and TP*PP={model_parallel_size} "
+                        f"require {int(dp_size or 0) * model_parallel_size} GPUs"
+                    )
+            return endpoints_to_processes(
                 endpoints,
                 base_sys_port=base_sys_port,
                 port_allocator=port_allocator,
@@ -616,14 +644,27 @@ class VLLMProtocol:
                 current_sys_port += len(non_dp)
                 continue
 
-            dp_size = self._get_dp_size(endpoint.mode) or endpoint.total_gpus
-            if dp_size != endpoint.total_gpus:
+            model_parallel_size = self._get_model_parallel_size(endpoint.mode)
+            if endpoint.total_gpus % model_parallel_size != 0:
+                raise ValueError(
+                    f"{endpoint.mode} endpoint has {endpoint.total_gpus} GPUs, which "
+                    f"is not divisible by TP*PP={model_parallel_size}"
+                )
+            expected_dp_size = endpoint.total_gpus // model_parallel_size
+            dp_size = self._get_dp_size(endpoint.mode) or expected_dp_size
+            if dp_size != expected_dp_size:
                 raise ValueError(
                     f"{endpoint.mode} data-parallel-size={dp_size} does not match "
-                    f"the endpoint's {endpoint.total_gpus} allocated GPUs"
+                    f"the endpoint's {endpoint.total_gpus} allocated GPUs with "
+                    f"TP*PP={model_parallel_size} (expected {expected_dp_size})"
                 )
 
-            local_dp_size = len(endpoint.gpu_indices)
+            if len(endpoint.gpu_indices) % model_parallel_size != 0:
+                raise ValueError(
+                    f"{endpoint.mode} has {len(endpoint.gpu_indices)} GPUs per node, "
+                    f"which is not divisible by TP*PP={model_parallel_size}"
+                )
+            local_dp_size = len(endpoint.gpu_indices) // model_parallel_size
             dp_rpc_port = port_allocator.next_dp_rpc_port(endpoint.leader_node)
             nixl_base_port = port_allocator.next_nixl_port_block(dp_size)
             dp_start_rank = 0
@@ -746,10 +787,18 @@ class VLLMProtocol:
             config.pop("data_parallel_hybrid_lb", None)
             config.pop("headless", None)
 
+            model_parallel_size = self._get_model_parallel_size(mode)
+            if len(process.gpu_indices) % model_parallel_size != 0:
+                raise ValueError(
+                    f"{mode} process has {len(process.gpu_indices)} GPUs, which is "
+                    f"not divisible by TP*PP={model_parallel_size}"
+                )
+            local_dp_size = len(process.gpu_indices) // model_parallel_size
+
             cmd.extend(
                 [
                     "--data-parallel-size-local",
-                    str(len(process.gpu_indices)),
+                    str(local_dp_size),
                     "--data-parallel-start-rank",
                     str(process.node_rank),
                     "--data-parallel-address",
@@ -759,7 +808,7 @@ class VLLMProtocol:
                     "--data-parallel-hybrid-lb",
                 ]
             )
-        elif is_dp_mode:
+        elif is_dp_mode and self.dp_launch_mode == "per_gpu":
             # DP+EP mode: each GPU runs its own process
             # process.node_rank is the dp_rank (set in endpoints_to_processes)
             dp_rank = process.node_rank
