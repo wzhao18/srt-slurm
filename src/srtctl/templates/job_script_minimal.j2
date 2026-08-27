@@ -131,6 +131,17 @@ export PATH="${SRTCTL_SOURCE}/bin:$HOME/.local/bin:$PATH"
 # Use a compute-specific venv so we don't pick up the login node's .venv/
 # (which may be built for a different arch, e.g. x86_64 login vs aarch64 compute)
 export UV_PROJECT_ENVIRONMENT="${SRTCTL_SOURCE}/.venv-compute"
+export UV_CACHE_DIR="/tmp/srtctl-uv-cache-${SLURM_JOB_ID}"
+export XDG_CACHE_HOME="/tmp/srtctl-xdg-cache-${SLURM_JOB_ID}"
+export TMPDIR="/tmp"
+export TORCH_HOME="/tmp/srtctl-torch-cache-${SLURM_JOB_ID}"
+export TORCHINDUCTOR_CACHE_DIR="/tmp/srtctl-inductor-cache-${SLURM_JOB_ID}"
+export TRITON_CACHE_DIR="/tmp/srtctl-triton-cache-${SLURM_JOB_ID}"
+export HF_HOME="/tmp/srtctl-hf-cache-${SLURM_JOB_ID}"
+export CUDA_CACHE_PATH="/tmp/srtctl-cuda-cache-${SLURM_JOB_ID}"
+export PIP_CACHE_DIR="/tmp/srtctl-pip-cache-${SLURM_JOB_ID}"
+mkdir -p "${TORCHINDUCTOR_CACHE_DIR}" "${TRITON_CACHE_DIR}" \
+    "${CUDA_CACHE_PATH}"
 
 if ! command -v uv &> /dev/null; then
     echo "ERROR: uv not found. Run 'make setup ARCH=<compute_arch>' first."
