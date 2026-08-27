@@ -24,6 +24,12 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+def _get_internal(url: str, *, timeout: float) -> requests.Response:
+    with requests.Session() as session:
+        session.trust_env = False
+        return session.get(url, timeout=timeout)
+
+
 # ============================================================================
 # Worker Health Check Result
 # ============================================================================
@@ -270,7 +276,7 @@ def wait_for_health(
 
         try:
             # Check health endpoint
-            response = requests.get(health_url, timeout=5.0)
+            response = _get_internal(health_url, timeout=5.0)
             if response.status_code != 200:
                 logger.debug(
                     "Health check failed (attempt %d/%d): status %d",
@@ -284,7 +290,7 @@ def wait_for_health(
             # If expected_workers specified, check /v1/models
             if expected_workers is not None:
                 try:
-                    models_response = requests.get(models_url, timeout=5.0)
+                    models_response = _get_internal(models_url, timeout=5.0)
                     if models_response.status_code == 200:
                         data = models_response.json()
                         # Check if we have the expected number of workers
@@ -337,7 +343,7 @@ def wait_for_etcd(
 
     for attempt in range(max_retries):
         try:
-            response = requests.get(health_url, timeout=5.0)
+            response = _get_internal(health_url, timeout=5.0)
             if response.status_code == 200:
                 logger.info("etcd is ready")
                 return True
@@ -426,7 +432,7 @@ def wait_for_model(
 
         # Try to fetch health
         try:
-            response = requests.get(health_url, timeout=5.0)
+            response = _get_internal(health_url, timeout=5.0)
             if response.status_code == 200:
                 # trtllm-serve /health may return an empty body; a 200 is sufficient
                 # (workers were gated by the frontend before the orchestrator started).

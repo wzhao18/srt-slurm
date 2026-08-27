@@ -3,11 +3,26 @@
 
 """Tests for health check parsing (Dynamo and SGLang router)."""
 
+from unittest.mock import MagicMock
+
+from srtctl.core import health
 from srtctl.core.health import (
     WorkerHealthResult,
     check_dynamo_health,
     check_sglang_router_health,
 )
+
+
+def test_internal_health_requests_ignore_environment_proxies(monkeypatch):
+    session = MagicMock()
+    session.__enter__.return_value = session
+    monkeypatch.setattr(health.requests, "Session", lambda: session)
+
+    health._get_internal("http://compute-node:8000/health", timeout=5.0)
+
+    assert session.trust_env is False
+    session.get.assert_called_once_with("http://compute-node:8000/health", timeout=5.0)
+
 
 # ============================================================================
 # Dynamo Health Check Tests

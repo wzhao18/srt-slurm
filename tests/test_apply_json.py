@@ -81,6 +81,45 @@ def test_apply_json_emits_single_line_on_stdout(monkeypatch, tmp_path: Path, cap
     assert record["metadata_path"].endswith("42042.json")
 
 
+def test_apply_does_not_export_session_proxy_to_sbatch(monkeypatch, tmp_path: Path, capsys: Any) -> None:
+    cfg = _write_config(tmp_path)
+    mock_sbatch = MagicMock(stdout="Submitted batch job 42043")
+    proxy_names = (
+        "HTTP_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "no_proxy",
+        "SOCKS5_PROXY",
+        "GIT_HTTP_PROXY",
+        "GIT_HTTPS_PROXY",
+        "GIT_PROXY_COMMAND",
+    )
+    for name in proxy_names:
+        monkeypatch.setenv(name, "http://127.0.0.1:21351")
+    monkeypatch.setenv("SRTCTL_ENV_SENTINEL", "preserved")
+    monkeypatch.delenv("RUNNER_NAME", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["srtctl", "apply", "-f", str(cfg), "-o", str(tmp_path), "--json"],
+    )
+
+    with (
+        patch("subprocess.run", return_value=mock_sbatch) as run,
+        patch("srtctl.cli.submit.get_srtslurm_setting", return_value=None),
+        patch("srtctl.cli.submit.create_job_record"),
+        patch("srtctl.cli.submit._assert_preflight_passed"),
+        patch("srtctl.cli.submit.validate_setup"),
+    ):
+        submit_cli.main()
+
+    sbatch_call = next(call for call in run.call_args_list if call.args[0][0] == "sbatch")
+    sbatch_env = sbatch_call.kwargs["env"]
+    assert sbatch_env["SRTCTL_ENV_SENTINEL"] == "preserved"
+    assert all(name not in sbatch_env for name in proxy_names)
+    capsys.readouterr()
+
+
 def test_apply_json_emits_error_line_on_failure(monkeypatch, tmp_path: Path, capsys: Any) -> None:
     cfg = _write_config(tmp_path)
 

@@ -63,6 +63,29 @@ from srtctl.ports import MOONCAKE_MASTER_PORT
 console = Console()
 logger = logging.getLogger(__name__)
 
+_PROXY_ENV_NAMES = {
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "FTP_PROXY",
+    "RSYNC_PROXY",
+    "SOCKS_PROXY",
+    "SOCKS5_PROXY",
+    "GIT_PROXY_COMMAND",
+}
+
+
+def _sbatch_environment() -> dict[str, str]:
+    """Return the caller environment without session-local proxy settings."""
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if name.upper() not in _PROXY_ENV_NAMES
+        and not (name.upper().startswith("GIT_") and name.upper().endswith("_PROXY"))
+    }
+
+
 # Populated by submit_with_orchestrator on successful submission. Consumed by
 # main() when --json is set so callers get one JSON line per submitted job.
 _submissions: list[dict] = []
@@ -644,6 +667,7 @@ def submit_with_orchestrator(
             capture_output=True,
             text=True,
             check=True,
+            env=_sbatch_environment(),
         )
 
         job_id = result.stdout.strip().split()[-1]
