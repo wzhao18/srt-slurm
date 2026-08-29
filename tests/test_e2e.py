@@ -1090,6 +1090,7 @@ backend:
         command = _build_mooncake_master_command(VLLMMooncakeKVStoreConfig(master_extra_args=[nof_arg]))
 
         assert "--eviction_high_watermark_ratio=0.9" in command
+        assert "--default_kv_lease_ttl=10000" in command
         assert command[-1] == nof_arg
 
 
