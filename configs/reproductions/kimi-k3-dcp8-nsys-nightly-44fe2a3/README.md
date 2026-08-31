@@ -49,6 +49,7 @@ uv sync --python 3.12
 ```
 
 `make setup` downloads the pinned NATS, etcd, and compute-architecture `uv` binaries used by `srt-slurm`. The `uv` environment is used only to submit and orchestrate Slurm jobs. None of these components is mounted as the vLLM, Dynamo, or benchmark Python runtime.
+The submission helper invokes `.venv/bin/srtctl` directly after `uv sync`; this avoids accidentally selecting an unrelated active virtual environment.
 
 ## Validate and submit
 

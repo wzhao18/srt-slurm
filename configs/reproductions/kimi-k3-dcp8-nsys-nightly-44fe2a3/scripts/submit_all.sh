@@ -7,10 +7,16 @@ BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRT_SLURM_ROOT="$(cd "${BUNDLE_DIR}/../../.." && pwd)"
 OUTPUT_ROOT="${1:-${SRT_SLURM_ROOT}/output_nsys_reproduction/nightly-44fe2a3}"
 NSYS_HOST_ROOT="${NSYS_HOST_ROOT:-/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1}"
+SRTCTL_BIN="${SRT_SLURM_ROOT}/.venv/bin/srtctl"
 
 : "${KIMI_K3_MXFP4_MODEL:?set KIMI_K3_MXFP4_MODEL to the local moonshotai/Kimi-K3 snapshot}"
 : "${KIMI_K3_NVFP4_MODEL:?set KIMI_K3_NVFP4_MODEL to the local nvidia/Kimi-K3-NVFP4 snapshot}"
 : "${KIMI_K3_DSPARK_MODEL:?set KIMI_K3_DSPARK_MODEL to the local Inferact/Kimi-K3-DSpark snapshot}"
+
+if [[ ! -x "${SRTCTL_BIN}" ]]; then
+    echo "srtctl is unavailable at ${SRTCTL_BIN}; run: uv sync --python 3.12" >&2
+    exit 1
+fi
 
 export NSYS_HOST_ROOT
 export SRTCTL_NSYS_BIN="/opt/nsight-systems/bin/nsys"
@@ -25,8 +31,7 @@ unset VIRTUAL_ENV PYTHONPATH PYTHONHOME
 mapfile -t configs < <(find "${BUNDLE_DIR}" -maxdepth 1 -name '*.yaml' -type f | sort)
 
 for config in "${configs[@]}"; do
-    uv run --project "${SRT_SLURM_ROOT}" --python 3.12 --no-sync \
-        srtctl dry-run -f "${config}" >/dev/null
+    "${SRTCTL_BIN}" dry-run -f "${config}" >/dev/null
 done
 
 for config in "${configs[@]}"; do
@@ -37,6 +42,5 @@ for config in "${configs[@]}"; do
     fi
     output_dir="${OUTPUT_ROOT}/${name}"
     echo "submitting ${name} -> ${output_dir}"
-    uv run --project "${SRT_SLURM_ROOT}" --python 3.12 --no-sync \
-        srtctl apply -f "${config}" -o "${output_dir}"
+    "${SRTCTL_BIN}" apply -f "${config}" -o "${output_dir}"
 done
