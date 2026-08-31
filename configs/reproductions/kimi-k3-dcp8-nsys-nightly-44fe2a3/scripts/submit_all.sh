@@ -14,6 +14,7 @@ OUTPUT_ROOT="${1:-${SRT_SLURM_ROOT}/output_nsys_reproduction/nightly-44fe2a3}"
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
 unset ALL_PROXY all_proxy NO_PROXY no_proxy
 unset GIT_HTTP_PROXY GIT_HTTPS_PROXY
+unset VIRTUAL_ENV PYTHONPATH PYTHONHOME
 
 "${SCRIPT_DIR}/verify_bundle.sh"
 
