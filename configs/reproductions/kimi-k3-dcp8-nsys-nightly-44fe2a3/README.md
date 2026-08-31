@@ -42,10 +42,11 @@ From the repository root:
 
 ```bash
 git checkout kimi-k3-dcp8-nsys-nightly-44fe2a3
+make setup ARCH=aarch64
 uv sync --python 3.12
 ```
 
-This environment is used only to submit and orchestrate Slurm jobs. It is not mounted as the vLLM, Dynamo, or benchmark runtime.
+`make setup` downloads the pinned NATS, etcd, and compute-architecture `uv` binaries used by `srt-slurm`. The `uv` environment is used only to submit and orchestrate Slurm jobs. None of these components is mounted as the vLLM, Dynamo, or benchmark Python runtime.
 
 ## Validate and submit
 
