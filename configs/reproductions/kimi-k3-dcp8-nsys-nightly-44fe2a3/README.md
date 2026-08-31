@@ -23,7 +23,6 @@ There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.v
 
 - Slurm with Pyxis/Enroot and two GB300 nodes per trace, four GPUs per node.
 - The `coreai_comparch_inferencex` account and `batch` partition, or equivalent values edited in all four YAML files.
-- RDMA device `mlx5_8`, or the corresponding device edited in all four YAML files.
 - `uv` on the login node for the submission-side `srtctl` environment.
 - Nsight Systems CLI 2025.4.1. It is expected at `/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1` by default; set `NSYS_HOST_ROOT` if the cluster installs it elsewhere.
 - A checkout of this repository at tag `kimi-k3-dcp8-nsys-nightly-44fe2a3`.
@@ -82,7 +81,9 @@ Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It f
 - MXFP4 natural, MXFP4 Sonnet, and NVFP4 natural wait for 64 active decode streams and three stable engine samples.
 - NVFP4 Sonnet starts at 53 active streams, matching historical run `597833`, which could not sustain all 64 streams simultaneously during the capture window.
 
-All recipes use DSpark K=4 with the historical synthetic acceptance length of 3.36, FP8 KV cache, TokenSpeed MLA, FlashInfer autotuning, a 512-token maximum CUDA graph capture size, and Mooncake-backed prefix replay.
+All recipes use DSpark K=4 with the historical synthetic acceptance length of 3.36, FP8 KV cache, TokenSpeed MLA, FlashInfer autotuning, a 512-token maximum CUDA graph capture size, and GPU-local prefix replay.
+
+The historical runs configured Mooncake, but their 64 x 131,072-token working set fits in the logged GPU-local KV capacity and the benchmark never clears the local cache between fill and replay. The pinned nightly cannot initialize the historical connector combination: it forces DCP KV interleave to the 1,536-token block size when any KV connector is present, while all of its attention backends reject DSpark with nontrivial DCP interleave. These reproduction recipes therefore omit the inactive external connector and explicitly retain token-level interleave (`cp-kv-cache-interleave-size: 1`). This avoids modifying the pinned image while preserving the decode-compute path captured by Nsight Systems.
 
 ## Required artifacts and checks
 
@@ -106,4 +107,4 @@ Before accepting a trace, verify:
 2. `benchmark.out` reports the container `python3`, not a Lustre virtual environment.
 3. `benchmark.out` reaches the decode-only window and exits successfully.
 4. Both `.nsys-rep` files are non-empty and `nsys stats` can open them.
-5. Worker logs contain no CUDA OOM, Mooncake load failure, lease expiry, or transfer timeout.
+5. Worker logs contain no CUDA OOM or runtime failure.
