@@ -1,0 +1,37 @@
+#!/bin/bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+IMAGE="vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9"
+CORPUS_SHA256="e0e13a826912a4a81bb3a582aa73c4af0675bdeee6ddf6d505efb63d562d496f"
+
+echo "${CORPUS_SHA256}  ${BUNDLE_DIR}/assets/shakespeare.txt" | sha256sum --check
+bash -n "${BUNDLE_DIR}/scripts/profile_decode.sh"
+bash -n "${BUNDLE_DIR}/scripts/submit_all.sh"
+
+mapfile -t configs < <(find "${BUNDLE_DIR}" -maxdepth 1 -name '*.yaml' -type f | sort)
+if [[ "${#configs[@]}" -ne 4 ]]; then
+    echo "expected four configs, found ${#configs[@]}" >&2
+    exit 1
+fi
+
+for config in "${configs[@]}"; do
+    image_count="$(grep -F -c "${IMAGE}" "${config}")"
+    if [[ "${image_count}" -ne 2 ]]; then
+        echo "${config}: expected two pinned image declarations" >&2
+        exit 1
+    fi
+    grep -Fq 'version: "1.2.1"' "${config}"
+    grep -Fq 'decode-context-parallel-size: 8' "${config}"
+    grep -Fq 'tensor-parallel-size: 8' "${config}"
+    grep -Fq 'type: "nsys"' "${config}"
+    grep -Fq 'PROFILE_ISL: "131072"' "${config}"
+    if grep -Eq '/vllm-worktree|/vllm/.venv|VIRTUAL_ENV:|PYTHONPATH:' "${config}"; then
+        echo "${config}: contains a forbidden local runtime dependency" >&2
+        exit 1
+    fi
+done
+
+echo "bundle validation passed"
