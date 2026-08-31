@@ -6,6 +6,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 IMAGE="vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9"
 CORPUS_SHA256="e0e13a826912a4a81bb3a582aa73c4af0675bdeee6ddf6d505efb63d562d496f"
+NSYS_HOST_ROOT="${NSYS_HOST_ROOT:-/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1}"
+
+if [[ ! -x "${NSYS_HOST_ROOT}/bin/nsys" ]]; then
+    echo "nsys is unavailable at ${NSYS_HOST_ROOT}/bin/nsys" >&2
+    exit 1
+fi
 
 echo "${CORPUS_SHA256}  ${BUNDLE_DIR}/assets/shakespeare.txt" | sha256sum --check
 bash -n "${BUNDLE_DIR}/scripts/profile_decode.sh"
@@ -27,7 +33,12 @@ for config in "${configs[@]}"; do
     grep -Fq 'decode-context-parallel-size: 8' "${config}"
     grep -Fq 'tensor-parallel-size: 8' "${config}"
     grep -Fq 'type: "nsys"' "${config}"
+    grep -Fq '${NSYS_HOST_ROOT}:/opt/nsight-systems' "${config}"
     grep -Fq 'PROFILE_ISL: "131072"' "${config}"
+    if grep -Fq 'router-session-affinity-ttl-secs' "${config}"; then
+        echo "${config}: ai-dynamo 1.2.1 does not accept router-session-affinity-ttl-secs" >&2
+        exit 1
+    fi
     if grep -Eq '/vllm-worktree|/vllm/.venv|VIRTUAL_ENV:|PYTHONPATH:' "${config}"; then
         echo "${config}: contains a forbidden local runtime dependency" >&2
         exit 1

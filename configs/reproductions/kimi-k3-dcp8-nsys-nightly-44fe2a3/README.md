@@ -13,10 +13,11 @@ The runtime is intentionally independent of a local vLLM or Dynamo checkout. All
 
 - `vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9`
 - `ai-dynamo==1.2.1`, installed into that container by `srt-slurm`
+- Nsight Systems CLI 2025.4.1, mounted read-only from the cluster installation
 - the container's `python3` and Python packages for the benchmark client
 - the bundled Sonnet corpus with SHA-256 `e0e13a826912a4a81bb3a582aa73c4af0675bdeee6ddf6d505efb63d562d496f`
 
-There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.venv` in these recipes. The only local inputs are the three model snapshots and the checked-out `srt-slurm` source itself.
+There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.venv` in these recipes. The only local inputs are the three model snapshots, the checked-out `srt-slurm` source, and the cluster's Nsight Systems installation. The pinned nightly image does not contain `nsys`, so the recipes mount the complete CLI installation instead of borrowing a Python environment.
 
 ## Hardware and software prerequisites
 
@@ -24,6 +25,7 @@ There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.v
 - The `coreai_comparch_inferencex` account and `batch` partition, or equivalent values edited in all four YAML files.
 - RDMA device `mlx5_8`, or the corresponding device edited in all four YAML files.
 - `uv` on the login node for the submission-side `srtctl` environment.
+- Nsight Systems CLI 2025.4.1. It is expected at `/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1` by default; set `NSYS_HOST_ROOT` if the cluster installs it elsewhere.
 - A checkout of this repository at tag `kimi-k3-dcp8-nsys-nightly-44fe2a3`.
 
 The model snapshots are pinned by Hugging Face identity:
@@ -54,6 +56,7 @@ uv sync --python 3.12
 export KIMI_K3_MXFP4_MODEL=/path/to/moonshotai--Kimi-K3
 export KIMI_K3_NVFP4_MODEL=/path/to/nvidia--Kimi-K3-NVFP4
 export KIMI_K3_DSPARK_MODEL=/path/to/Inferact--Kimi-K3-DSpark
+export NSYS_HOST_ROOT=/path/to/nsight-systems-cli/2025.4.1  # optional on this cluster
 
 configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/verify_bundle.sh
 configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/submit_all.sh
@@ -66,6 +69,8 @@ output_nsys_reproduction/nightly-44fe2a3/<config-name>/<job-id>/
 ```
 
 Pass an alternate output root as the first argument to `submit_all.sh` if desired.
+
+`submit_all.sh` sets `SRTCTL_NSYS_BIN=/opt/nsight-systems/bin/nsys`, and every recipe mounts `${NSYS_HOST_ROOT}` at `/opt/nsight-systems`. This uses the `srt-slurm` profiler's explicit Nsight binary override, so it does not depend on the submitting shell's module state or `PATH`. The recipes omit `router-session-affinity-ttl-secs` because the pinned `ai-dynamo==1.2.1` CLI does not support that newer option.
 
 ## Workload and capture semantics
 

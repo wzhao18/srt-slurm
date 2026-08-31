@@ -6,10 +6,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRT_SLURM_ROOT="$(cd "${BUNDLE_DIR}/../../.." && pwd)"
 OUTPUT_ROOT="${1:-${SRT_SLURM_ROOT}/output_nsys_reproduction/nightly-44fe2a3}"
+NSYS_HOST_ROOT="${NSYS_HOST_ROOT:-/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1}"
 
 : "${KIMI_K3_MXFP4_MODEL:?set KIMI_K3_MXFP4_MODEL to the local moonshotai/Kimi-K3 snapshot}"
 : "${KIMI_K3_NVFP4_MODEL:?set KIMI_K3_NVFP4_MODEL to the local nvidia/Kimi-K3-NVFP4 snapshot}"
 : "${KIMI_K3_DSPARK_MODEL:?set KIMI_K3_DSPARK_MODEL to the local Inferact/Kimi-K3-DSpark snapshot}"
+
+export NSYS_HOST_ROOT
+export SRTCTL_NSYS_BIN="/opt/nsight-systems/bin/nsys"
 
 unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy
 unset ALL_PROXY all_proxy NO_PROXY no_proxy

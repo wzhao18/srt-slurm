@@ -16,6 +16,7 @@ identity:
 
 extra_mount:
   - "${KIMI_K3_DSPARK_MODEL}:/dspark-model"
+  - "${NSYS_HOST_ROOT}:/opt/nsight-systems"
 
 dynamo:
   version: "1.2.1"
@@ -46,7 +47,6 @@ frontend:
   enable_multiple_frontends: false
   args:
     router-mode: "round-robin"
-    router-session-affinity-ttl-secs: 900
   env:
     DYN_ROUTER_ACTIVE_REQUEST_EXPIRY_SECS: "3600"
     DYN_TOKENIZER_CACHE_BYTES: "8589934592"
