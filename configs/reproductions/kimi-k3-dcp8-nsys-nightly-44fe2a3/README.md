@@ -38,12 +38,11 @@ effective package versions and patch/barrier markers from both worker logs.
 
 The benchmark wrapper supplies fail-closed stubs for the unused Hugging Face Dataset and pandas CSV loaders. The random-token and Sonnet modes do not call either loader, so this avoids installing optional client packages into the runtime image while still failing clearly if an unsupported dataset mode is selected.
 
-The checked-out `srt-slurm` benchmark client also provides the three Sonnet
-options used by this bundle: exact token-length truncation and save/load of the
-finalized prompt list. Saving after tokenization and loading the same list for
-the replay guarantees that cache fill and profiled decode receive byte-for-byte
-identical prompts. `verify_bundle.sh` rejects an srt-slurm checkout that lacks
-any of these options.
+The checked-out `srt-slurm` benchmark client provides exact Sonnet token-length
+truncation and save/load of finalized Sonnet or random prompt lists. Saving
+after tokenization and loading the same list for replay guarantees that cache
+fill and profiled decode receive byte-for-byte identical prompts.
+`verify_bundle.sh` rejects an `srt-slurm` checkout that lacks these options.
 
 Before starting the servers on a new cluster, the same pinned image can test
 the tokenizer-level Sonnet path with:
@@ -160,7 +159,7 @@ configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/audit_outputs.sh
 
 The auditor requires exactly one job directory for each named reproduction,
 checks the pinned image and runtime fingerprints, confirms all 64 requests and
-their exact token counts completed, verifies the Sonnet request caches, rejects
+their exact token counts completed, verifies every request cache, rejects
 fatal worker errors, and opens all eight reports with `nsys stats`.
 
 ## Kernel-step analysis
@@ -173,7 +172,7 @@ configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/analyze_all.sh
 
 It exports only the CUDA kernel and string tables, aggregates all eight GPUs
 for each run, writes a JSON and Markdown summary per run under
-`output_nsys_reproduction/nightly-44fe2a3/analysis/`, and renders separate
+`output_nsys_collection/analysis-nightly-44fe2a3/`, and renders separate
 MXFP4-versus-NVFP4 tables for natural and Sonnet routing. The commands below
 show the equivalent per-run workflow.
 
@@ -183,7 +182,7 @@ installation that recorded them:
 ```bash
 mkdir -p analysis/mxfp4-natural
 index=0
-for report in output_nsys_reproduction/nightly-44fe2a3/\
+for report in output_nsys_collection/\
 kimi-k3-mxfp4-dcp8-dspark4-natural-nightly44fe2a3-128k-nsys/*/\
 logs/profiles/agg/*.nsys-rep; do
     /cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1/bin/nsys export \
@@ -205,7 +204,7 @@ analyze_dcp_trace.py \
     --variant mxfp4_dcp8 \
     --aggregation mean \
     --output-json analysis/mxfp4-natural/summary.json \
-    --worker-log "$(find output_nsys_reproduction/nightly-44fe2a3/\
+    --worker-log "$(find output_nsys_collection/\
 kimi-k3-mxfp4-dcp8-dspark4-natural-nightly44fe2a3-128k-nsys \
 -name '*_agg_w0.out' | sort | head -1)" \
     analysis/mxfp4-natural/node-0.sqlite \
