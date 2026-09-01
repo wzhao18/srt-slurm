@@ -132,6 +132,13 @@ def load_tokenizer(
     )
 
 
+def tokenizer_supports_chat_template(tokenizer: Any) -> bool:
+    return bool(getattr(tokenizer, "chat_template", None)) or (
+        type(tokenizer).apply_chat_template
+        is not PreTrainedTokenizerBase.apply_chat_template
+    )
+
+
 @dataclass
 class BenchmarkMetrics:
     completed: int
@@ -237,6 +244,7 @@ def sample_sonnet_requests(
     output_len: int,
     prefix_len: int,
     tokenizer: PreTrainedTokenizerBase,
+    exact_input_len: bool = False,
 ) -> list[tuple[str, str, int, int, None]]:
     assert input_len > prefix_len, "'args.sonnet-input-len' must be greater than 'args.prefix-input-len'."
 
@@ -284,9 +292,103 @@ def sample_sonnet_requests(
         ]
         prompt_formatted = tokenizer.apply_chat_template(message, add_generation_prompt=True, tokenize=False)
         prompt_len = len(tokenizer(prompt_formatted).input_ids)
+        if exact_input_len:
+            while prompt_len < input_len:
+                sampled_lines += random.choice(poem_lines)
+                prompt = f"{base_prompt}{sampled_lines}"
+                message[0]["content"] = prompt
+                prompt_formatted = tokenizer.apply_chat_template(
+                    message, add_generation_prompt=True, tokenize=False
+                )
+                prompt_len = len(tokenizer(prompt_formatted).input_ids)
+
+            prompt_token_ids = tokenizer(
+                prompt_formatted, add_special_tokens=False
+            ).input_ids[:input_len]
+            prompt_formatted = tokenizer.decode(
+                prompt_token_ids, skip_special_tokens=False
+            )
+            prompt_len = len(
+                tokenizer(prompt_formatted, add_special_tokens=False).input_ids
+            )
+            if prompt_len != input_len:
+                raise ValueError(
+                    "The tokenizer did not preserve the exact Sonnet prompt length: "
+                    f"expected {input_len}, got {prompt_len}"
+                )
         sampled_requests.append((prompt, prompt_formatted, prompt_len, output_len, None))
 
     return sampled_requests
+
+
+def save_input_requests(
+    path: str,
+    input_requests: list[tuple[str, int, int, Any]],
+    args: argparse.Namespace,
+) -> None:
+    if args.dataset_name != "sonnet":
+        raise ValueError("Input request caching currently supports only Sonnet.")
+
+    payload = {
+        "version": 1,
+        "dataset_name": args.dataset_name,
+        "dataset_path": args.dataset_path,
+        "num_prompts": args.num_prompts,
+        "seed": args.seed,
+        "sonnet_input_len": args.sonnet_input_len,
+        "sonnet_prefix_len": args.sonnet_prefix_len,
+        "sonnet_exact_input_len": args.sonnet_exact_input_len,
+        "requests": [
+            {"prompt": prompt, "prompt_len": prompt_len}
+            for prompt, prompt_len, _, _ in input_requests
+        ],
+    }
+    cache_dir = os.path.dirname(path)
+    if cache_dir:
+        os.makedirs(cache_dir, exist_ok=True)
+    temporary_path = f"{path}.tmp.{os.getpid()}"
+    with open(temporary_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False)
+    os.replace(temporary_path, path)
+
+
+def load_input_requests(
+    path: str, args: argparse.Namespace
+) -> list[tuple[str, int, int, None]]:
+    if args.dataset_name != "sonnet":
+        raise ValueError("Input request caching currently supports only Sonnet.")
+
+    with open(path, encoding="utf-8") as f:
+        payload = json.load(f)
+    expected_metadata = {
+        "version": 1,
+        "dataset_name": args.dataset_name,
+        "dataset_path": args.dataset_path,
+        "num_prompts": args.num_prompts,
+        "seed": args.seed,
+        "sonnet_input_len": args.sonnet_input_len,
+        "sonnet_prefix_len": args.sonnet_prefix_len,
+        "sonnet_exact_input_len": args.sonnet_exact_input_len,
+    }
+    mismatches = {
+        key: (payload.get(key), expected)
+        for key, expected in expected_metadata.items()
+        if payload.get(key) != expected
+    }
+    if mismatches:
+        raise ValueError(f"Cached input request metadata mismatch: {mismatches}")
+
+    requests = payload.get("requests")
+    if not isinstance(requests, list) or len(requests) != args.num_prompts:
+        raise ValueError(
+            "Cached input requests do not match --num-prompts: "
+            f"expected {args.num_prompts}, got "
+            f"{len(requests) if isinstance(requests, list) else 'invalid data'}"
+        )
+    return [
+        (request["prompt"], request["prompt_len"], args.sonnet_output_len, None)
+        for request in requests
+    ]
 
 
 def sample_vision_arena_requests(
@@ -1107,13 +1209,7 @@ def main(args: argparse.Namespace):
         # but the loaded tokenizer cannot render a chat template. The default
         # HF DeepSeek-V4 tokenizer has no jinja chat_template and would otherwise
         # crash deep inside transformers with a generic ValueError.
-        from transformers.tokenization_utils_base import PreTrainedTokenizerBase
-        has_jinja = bool(getattr(tokenizer, "chat_template", None))
-        has_method_override = (
-            type(tokenizer).apply_chat_template
-            is not PreTrainedTokenizerBase.apply_chat_template
-        )
-        if not has_jinja and not has_method_override:
+        if not tokenizer_supports_chat_template(tokenizer):
             raise ValueError(
                 "--use-chat-template was set, but the loaded tokenizer "
                 f"({type(tokenizer).__name__}) has no jinja chat_template and "
@@ -1135,7 +1231,9 @@ def main(args: argparse.Namespace):
                 "    use_chat_template: false\n"
             )
 
-    if args.dataset_name == "custom":
+    if args.load_input_requests is not None:
+        input_requests = load_input_requests(args.load_input_requests, args)
+    elif args.dataset_name == "custom":
         from benchmark_dataset import sample_custom_requests
 
         input_requests = sample_custom_requests(
@@ -1184,15 +1282,16 @@ def main(args: argparse.Namespace):
                     output_len=args.sonnet_output_len,
                     prefix_len=args.sonnet_prefix_len,
                     tokenizer=tokenizer,
+                    exact_input_len=args.sonnet_exact_input_len,
                 )
                 input_requests = [
                     (prompt, prompt_len, output_len, None)
                     for prompt, prompt_formatted, prompt_len, output_len, _ in input_requests
                 ]
             else:
-                assert (
-                    tokenizer.chat_template or tokenizer.default_chat_template
-                ), "Tokenizer/model must have chat template for sonnet dataset."
+                assert tokenizer_supports_chat_template(tokenizer), (
+                    "Tokenizer/model must have chat template for sonnet dataset."
+                )
                 input_requests = sample_sonnet_requests(
                     dataset_path=args.dataset_path,
                     num_requests=args.num_prompts,
@@ -1200,6 +1299,7 @@ def main(args: argparse.Namespace):
                     output_len=args.sonnet_output_len,
                     prefix_len=args.sonnet_prefix_len,
                     tokenizer=tokenizer,
+                    exact_input_len=args.sonnet_exact_input_len,
                 )
                 input_requests = [
                     (prompt_formatted, prompt_len, output_len, None)
@@ -1235,6 +1335,9 @@ def main(args: argparse.Namespace):
 
         else:
             raise ValueError(f"Unknown dataset: {args.dataset_name}")
+
+    if args.save_input_requests is not None:
+        save_input_requests(args.save_input_requests, input_requests, args)
 
     goodput_config_dict = check_goodput_args(args)
 
@@ -1567,6 +1670,20 @@ if __name__ == "__main__":
         type=int,
         default=200,
         help="Number of prefix tokens per request, used only for sonnet dataset.",
+    )
+    sonnet_group.add_argument(
+        "--sonnet-exact-input-len",
+        action="store_true",
+        help="Truncate Sonnet prompts to exactly --sonnet-input-len tokens.",
+    )
+    sonnet_cache_group = sonnet_group.add_mutually_exclusive_group()
+    sonnet_cache_group.add_argument(
+        "--save-input-requests",
+        help="Save finalized Sonnet input prompts for a later replay.",
+    )
+    sonnet_cache_group.add_argument(
+        "--load-input-requests",
+        help="Load finalized Sonnet prompts instead of tokenizing the corpus.",
     )
 
     sharegpt_group = parser.add_argument_group("sharegpt dataset options")

@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SRT_SLURM_ROOT="$(cd "${BUNDLE_DIR}/../../.." && pwd)"
 IMAGE="vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9"
 CORPUS_SHA256="e0e13a826912a4a81bb3a582aa73c4af0675bdeee6ddf6d505efb63d562d496f"
 NSYS_HOST_ROOT="${NSYS_HOST_ROOT:-/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1}"
@@ -15,9 +16,16 @@ fi
 
 echo "${CORPUS_SHA256}  ${BUNDLE_DIR}/assets/shakespeare.txt" | sha256sum --check
 bash -n "${BUNDLE_DIR}/scripts/profile_decode.sh"
+bash -n "${BUNDLE_DIR}/scripts/audit_outputs.sh"
 bash -n "${BUNDLE_DIR}/scripts/submit_all.sh"
+grep -Fq 'SONNET_CLIENT_SMOKE_OK' \
+    "${BUNDLE_DIR}/scripts/smoke_sonnet_requests.py"
 grep -Fq 'sys.modules["pandas"] = pandas_module' \
     "${BUNDLE_DIR}/scripts/benchmark_serving_wrapper.py"
+BENCHMARK_SCRIPT="${SRT_SLURM_ROOT}/src/srtctl/benchmarks/scripts/sa-bench/benchmark_serving.py"
+grep -Fq -- '--sonnet-exact-input-len' "${BENCHMARK_SCRIPT}"
+grep -Fq -- '--save-input-requests' "${BENCHMARK_SCRIPT}"
+grep -Fq -- '--load-input-requests' "${BENCHMARK_SCRIPT}"
 
 mapfile -t configs < <(find "${BUNDLE_DIR}" -maxdepth 1 -name '*.yaml' -type f | sort)
 if [[ "${#configs[@]}" -ne 4 ]]; then

@@ -19,6 +19,25 @@ The runtime is intentionally independent of a local vLLM or Dynamo checkout. All
 
 The benchmark wrapper supplies fail-closed stubs for the unused Hugging Face Dataset and pandas CSV loaders. The random-token and Sonnet modes do not call either loader, so this avoids installing optional client packages into the runtime image while still failing clearly if an unsupported dataset mode is selected.
 
+The checked-out `srt-slurm` benchmark client also provides the three Sonnet
+options used by this bundle: exact token-length truncation and save/load of the
+finalized prompt list. Saving after tokenization and loading the same list for
+the replay guarantees that cache fill and profiled decode receive byte-for-byte
+identical prompts. `verify_bundle.sh` rejects an srt-slurm checkout that lacks
+any of these options.
+
+Before starting the servers on a new cluster, the same pinned image can test
+the tokenizer-level Sonnet path with:
+
+```bash
+python3 /configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/smoke_sonnet_requests.py
+```
+
+Run that command inside the image with this checkout's `configs/` mounted at
+`/configs`, `src/srtctl/benchmarks/scripts` at `/srtctl-benchmarks`, and either
+Kimi checkpoint at `/model`. It generates exact 512-token prompts and verifies
+that the finalized prompt list survives a save/load round trip unchanged.
+
 There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.venv` in these recipes. The only local inputs are the three model snapshots, the checked-out `srt-slurm` source, and the cluster's Nsight Systems installation. The pinned nightly image does not contain `nsys`, so the recipes mount the complete CLI installation instead of borrowing a Python environment.
 
 ## Hardware and software prerequisites
@@ -110,3 +129,14 @@ Before accepting a trace, verify:
 3. `benchmark.out` reaches the decode-only window and exits successfully.
 4. Both `.nsys-rep` files are non-empty and `nsys stats` can open them.
 5. Worker logs contain no CUDA OOM or runtime failure.
+
+After all four jobs complete, run the bundled fail-closed audit:
+
+```bash
+configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/audit_outputs.sh
+```
+
+The auditor requires exactly one job directory for each named reproduction,
+checks the pinned image and runtime fingerprints, confirms all 64 requests and
+their exact token counts completed, verifies the Sonnet request caches, rejects
+fatal worker errors, and opens all eight reports with `nsys stats`.
