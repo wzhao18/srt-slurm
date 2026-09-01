@@ -12,14 +12,15 @@ identity:
   container:
     image: "vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9"
   frameworks:
-    dynamo: "1.4.2"
+    dynamo: "ba83080ecd31c1ce918559e576d3c5bc9e092ff1"
 
 extra_mount:
   - "${KIMI_K3_DSPARK_MODEL}:/dspark-model"
   - "${NSYS_HOST_ROOT}:/opt/nsight-systems"
 
 dynamo:
-  version: "1.4.2"
+  hash: "ba83080ecd31c1ce918559e576d3c5bc9e092ff1"
+  install: true
   request_plane: "tcp"
 
 slurm:

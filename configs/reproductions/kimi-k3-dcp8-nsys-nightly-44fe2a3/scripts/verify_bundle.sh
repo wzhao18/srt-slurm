@@ -44,7 +44,8 @@ for config in "${configs[@]}"; do
         echo "${config}: expected two pinned image declarations" >&2
         exit 1
     fi
-    grep -Fq 'version: "1.4.2"' "${config}"
+    grep -Fq 'hash: "ba83080ecd31c1ce918559e576d3c5bc9e092ff1"' "${config}"
+    grep -Fq 'install: true' "${config}"
     grep -Fq 'decode-context-parallel-size: 8' "${config}"
     grep -Fq 'tensor-parallel-size: 8' "${config}"
     grep -Fq 'cp-kv-cache-interleave-size: 1' "${config}"

@@ -10,7 +10,8 @@ NSYS_HOST_ROOT="${NSYS_HOST_ROOT:-/cm/shared/apps/nvidia/nsight-systems-cli/2025
 EXPECTED_SRTCTL_COMMIT="${EXPECTED_SRTCTL_COMMIT:-}"
 EXPECTED_IMAGE="vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9"
 EXPECTED_VLLM="0.28.1rc1.dev130+g44fe2a392"
-EXPECTED_DYNAMO="1.4.2"
+EXPECTED_DYNAMO_HASH="ba83080ecd31c1ce918559e576d3c5bc9e092ff1"
+EXPECTED_DYNAMO_VERSION="1.3.0"
 
 expected_runs=(
     kimi-k3-mxfp4-dcp8-dspark4-natural-nightly44fe2a3-128k-nsys
@@ -69,6 +70,10 @@ for run_name in "${expected_runs[@]}"; do
 
     grep -Fq "${EXPECTED_IMAGE}" "${config}" || \
         fail "${job_id}: config does not use the pinned image"
+    grep -Fq "hash: ${EXPECTED_DYNAMO_HASH}" "${lock}" || \
+        fail "${job_id}: recipe lock does not use the pinned Dynamo commit"
+    grep -Fq "install: true" "${lock}" || \
+        fail "${job_id}: recipe lock does not install pinned Dynamo"
     lock_commit="$(awk '/^srtctl_commit:/ {print $2}' "${lock}")"
     [[ -n "${lock_commit}" ]] || fail "${job_id}: srtctl commit is missing"
     if [[ -z "${EXPECTED_SRTCTL_COMMIT}" ]]; then
@@ -78,7 +83,7 @@ for run_name in "${expected_runs[@]}"; do
         fail "${job_id}: unexpected srtctl commit ${lock_commit}"
     grep -Fq "\"vllm\": \"${EXPECTED_VLLM}\"" "${fingerprint}" || \
         fail "${job_id}: unexpected vLLM version"
-    grep -Fq "\"dynamo\": \"${EXPECTED_DYNAMO}\"" "${fingerprint}" || \
+    grep -Fq "\"dynamo\": \"${EXPECTED_DYNAMO_VERSION}\"" "${fingerprint}" || \
         fail "${job_id}: unexpected Dynamo version"
     grep -Fq "\"VLLM_IMAGE_TAG\": \"${EXPECTED_IMAGE}\"" "${fingerprint}" || \
         fail "${job_id}: runtime image fingerprint does not match"

@@ -12,15 +12,16 @@ This bundle reproduces the DCP8 decode traces represented by the four runs below
 The runtime is intentionally independent of a local vLLM or Dynamo checkout. All four recipes use:
 
 - `vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9`
-- `ai-dynamo==1.4.2`, installed into that container by `srt-slurm`
+- Dynamo commit `ba83080ecd31c1ce918559e576d3c5bc9e092ff1`, installed
+  into the job container by `srt-slurm`
 - Nsight Systems CLI 2025.4.1, mounted read-only from the cluster installation
 - the container's `python3` and Python packages for the benchmark client
 - the bundled Sonnet corpus with SHA-256 `e0e13a826912a4a81bb3a582aa73c4af0675bdeee6ddf6d505efb63d562d496f`
 
-Dynamo 1.4.2 is required rather than 1.2.1. The older Rust frontend rejects
-Kimi-K3 metadata with `Unsupported tiktoken model_type 'kimi_k3'`; 1.4.2 is
-the released Dynamo version whose Kimi-K3 recipe includes the updated
-frontend tokenizer.
+`dynamo.install: true` performs the pinned install in the container's writable
+overlay. It does not read or modify the submitter's local vLLM or Dynamo
+virtual environments. The pinned commit reports package version `1.3.0` at
+runtime and contains the Kimi-K3 frontend tokenizer support required here.
 
 The benchmark wrapper supplies fail-closed stubs for the unused Hugging Face Dataset and pandas CSV loaders. The random-token and Sonnet modes do not call either loader, so this avoids installing optional client packages into the runtime image while still failing clearly if an unsupported dataset mode is selected.
 
@@ -129,7 +130,9 @@ For Sonnet runs, it also contains `logs/profile-benchmark/sonnet-input-requests.
 
 Before accepting a trace, verify:
 
-1. `fingerprint_agg_w0.json` reports the vLLM version from the pinned image and Dynamo `1.4.2`.
+1. `fingerprint_agg_w0.json` reports the vLLM version from the pinned image and
+   Dynamo package version `1.3.0`; `config.yaml` and `recipe.lock.yaml` record
+   Dynamo commit `ba83080ecd31c1ce918559e576d3c5bc9e092ff1`.
 2. `benchmark.out` reports the container `python3`, not a Lustre virtual environment.
 3. `benchmark.out` reaches the decode-only window and exits successfully.
 4. Both `.nsys-rep` files are non-empty and `nsys stats` can open them.
