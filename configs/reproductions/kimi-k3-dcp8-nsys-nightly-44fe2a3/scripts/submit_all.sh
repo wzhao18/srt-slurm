@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRT_SLURM_ROOT="$(cd "${BUNDLE_DIR}/../../.." && pwd)"
-OUTPUT_ROOT="${1:-${SRT_SLURM_ROOT}/output_nsys_reproduction/nightly-44fe2a3}"
+OUTPUT_ROOT="${1:-${SRT_SLURM_ROOT}/output_nsys_collection}"
 NSYS_HOST_ROOT="${NSYS_HOST_ROOT:-/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1}"
 SRTCTL_BIN="${SRT_SLURM_ROOT}/.venv/bin/srtctl"
 

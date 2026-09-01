@@ -326,18 +326,29 @@ def save_input_requests(
     input_requests: list[tuple[str, int, int, Any]],
     args: argparse.Namespace,
 ) -> None:
-    if args.dataset_name != "sonnet":
-        raise ValueError("Input request caching currently supports only Sonnet.")
+    if args.dataset_name == "sonnet":
+        metadata = {
+            "dataset_path": args.dataset_path,
+            "sonnet_input_len": args.sonnet_input_len,
+            "sonnet_prefix_len": args.sonnet_prefix_len,
+            "sonnet_exact_input_len": args.sonnet_exact_input_len,
+        }
+    elif args.dataset_name == "random":
+        metadata = {
+            "random_input_len": args.random_input_len,
+            "random_prefix_len": args.random_prefix_len,
+            "random_range_ratio": args.random_range_ratio,
+            "use_chat_template": args.use_chat_template,
+        }
+    else:
+        raise ValueError("Input request caching supports Sonnet and random datasets.")
 
     payload = {
-        "version": 1,
+        "version": 2,
         "dataset_name": args.dataset_name,
-        "dataset_path": args.dataset_path,
         "num_prompts": args.num_prompts,
         "seed": args.seed,
-        "sonnet_input_len": args.sonnet_input_len,
-        "sonnet_prefix_len": args.sonnet_prefix_len,
-        "sonnet_exact_input_len": args.sonnet_exact_input_len,
+        **metadata,
         "requests": [
             {"prompt": prompt, "prompt_len": prompt_len}
             for prompt, prompt_len, _, _ in input_requests
@@ -355,20 +366,33 @@ def save_input_requests(
 def load_input_requests(
     path: str, args: argparse.Namespace
 ) -> list[tuple[str, int, int, None]]:
-    if args.dataset_name != "sonnet":
-        raise ValueError("Input request caching currently supports only Sonnet.")
-
     with open(path, encoding="utf-8") as f:
         payload = json.load(f)
+    if args.dataset_name == "sonnet":
+        dataset_metadata = {
+            "dataset_path": args.dataset_path,
+            "sonnet_input_len": args.sonnet_input_len,
+            "sonnet_prefix_len": args.sonnet_prefix_len,
+            "sonnet_exact_input_len": args.sonnet_exact_input_len,
+        }
+        output_len = args.sonnet_output_len
+    elif args.dataset_name == "random":
+        dataset_metadata = {
+            "random_input_len": args.random_input_len,
+            "random_prefix_len": args.random_prefix_len,
+            "random_range_ratio": args.random_range_ratio,
+            "use_chat_template": args.use_chat_template,
+        }
+        output_len = args.random_output_len
+    else:
+        raise ValueError("Input request caching supports Sonnet and random datasets.")
+
     expected_metadata = {
-        "version": 1,
+        "version": 2,
         "dataset_name": args.dataset_name,
-        "dataset_path": args.dataset_path,
         "num_prompts": args.num_prompts,
         "seed": args.seed,
-        "sonnet_input_len": args.sonnet_input_len,
-        "sonnet_prefix_len": args.sonnet_prefix_len,
-        "sonnet_exact_input_len": args.sonnet_exact_input_len,
+        **dataset_metadata,
     }
     mismatches = {
         key: (payload.get(key), expected)
@@ -386,7 +410,7 @@ def load_input_requests(
             f"{len(requests) if isinstance(requests, list) else 'invalid data'}"
         )
     return [
-        (request["prompt"], request["prompt_len"], args.sonnet_output_len, None)
+        (request["prompt"], request["prompt_len"], output_len, None)
         for request in requests
     ]
 
@@ -1231,8 +1255,9 @@ def main(args: argparse.Namespace):
                 "    use_chat_template: false\n"
             )
 
-    if args.load_input_requests is not None:
-        input_requests = load_input_requests(args.load_input_requests, args)
+    load_request_path = getattr(args, "load_input_requests", None)
+    if load_request_path is not None:
+        input_requests = load_input_requests(load_request_path, args)
     elif args.dataset_name == "custom":
         from benchmark_dataset import sample_custom_requests
 
@@ -1336,8 +1361,9 @@ def main(args: argparse.Namespace):
         else:
             raise ValueError(f"Unknown dataset: {args.dataset_name}")
 
-    if args.save_input_requests is not None:
-        save_input_requests(args.save_input_requests, input_requests, args)
+    save_request_path = getattr(args, "save_input_requests", None)
+    if save_request_path is not None:
+        save_input_requests(save_request_path, input_requests, args)
 
     goodput_config_dict = check_goodput_args(args)
 
@@ -1676,14 +1702,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Truncate Sonnet prompts to exactly --sonnet-input-len tokens.",
     )
-    sonnet_cache_group = sonnet_group.add_mutually_exclusive_group()
-    sonnet_cache_group.add_argument(
+    request_cache_group = parser.add_mutually_exclusive_group()
+    request_cache_group.add_argument(
         "--save-input-requests",
-        help="Save finalized Sonnet input prompts for a later replay.",
+        help="Save finalized Sonnet or random input prompts for a later replay.",
     )
-    sonnet_cache_group.add_argument(
+    request_cache_group.add_argument(
         "--load-input-requests",
-        help="Load finalized Sonnet prompts instead of tokenizing the corpus.",
+        help="Load finalized Sonnet or random prompts instead of generating them.",
     )
 
     sharegpt_group = parser.add_argument_group("sharegpt dataset options")

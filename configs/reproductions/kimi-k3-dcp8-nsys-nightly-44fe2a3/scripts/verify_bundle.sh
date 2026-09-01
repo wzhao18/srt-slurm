@@ -52,15 +52,13 @@ for config in "${configs[@]}"; do
     grep -Fq 'decode-context-parallel-size: 8' "${config}"
     grep -Fq 'tensor-parallel-size: 8' "${config}"
     grep -Fq 'cp-kv-cache-interleave-size: 1' "${config}"
+    grep -Fq 'mooncake_kv_store:' "${config}"
+    grep -Fq 'kv_connector":"MooncakeStoreConnector"' "${config}"
     grep -Fq 'type: "nsys"' "${config}"
     grep -Fq '${NSYS_HOST_ROOT}:/opt/nsight-systems' "${config}"
     grep -Fq 'PROFILE_ISL: "131072"' "${config}"
     if grep -Fq 'router-session-affinity-ttl-secs' "${config}"; then
         echo "${config}: router-session-affinity is not part of this reproduction" >&2
-        exit 1
-    fi
-    if grep -Eq 'kv-transfer-config:|mooncake_kv_store:' "${config}"; then
-        echo "${config}: the pinned nightly cannot combine DCP, DSpark, and a KV connector" >&2
         exit 1
     fi
     if grep -Eq '/vllm-worktree|/vllm/.venv|VIRTUAL_ENV:|PYTHONPATH:' "${config}"; then

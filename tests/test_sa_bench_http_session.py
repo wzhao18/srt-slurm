@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the SA-Bench Dynamo HTTP connection pool lifecycle."""
+"""Tests for SA-Bench Dynamo HTTP lifecycle and reproducible request replay."""
 
 from __future__ import annotations
 
@@ -537,3 +537,31 @@ def test_result_json_records_effective_http_connection_mode(monkeypatch, tmp_pat
     result = module.json.loads((tmp_path / "result.json").read_text())
     assert observed == [reuse_http_connections]
     assert result["reuse_http_connections"] is reuse_http_connections
+
+
+def test_random_request_cache_replays_exact_prompts_with_new_output_length(tmp_path):
+    _import_sa_bench_module("backend_request_func")
+    module = _import_sa_bench_module("benchmark_serving")
+    cache_path = tmp_path / "random-requests.json"
+    fill_requests = [
+        ("first prompt", 131072, 1, None),
+        ("second prompt", 131072, 1, None),
+    ]
+    args = module.argparse.Namespace(
+        dataset_name="random",
+        num_prompts=2,
+        seed=0,
+        random_input_len=131072,
+        random_output_len=1,
+        random_prefix_len=0,
+        random_range_ratio=1.0,
+        use_chat_template=False,
+    )
+
+    module.save_input_requests(str(cache_path), fill_requests, args)
+    args.random_output_len = 4096
+
+    assert module.load_input_requests(str(cache_path), args) == [
+        ("first prompt", 131072, 4096, None),
+        ("second prompt", 131072, 4096, None),
+    ]

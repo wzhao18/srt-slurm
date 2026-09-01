@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRT_SLURM_ROOT="$(cd "${BUNDLE_DIR}/../../.." && pwd)"
-OUTPUT_ROOT="${1:-${SRT_SLURM_ROOT}/output_nsys_reproduction/nightly-44fe2a3}"
+OUTPUT_ROOT="${1:-${SRT_SLURM_ROOT}/output_nsys_collection}"
 NSYS_HOST_ROOT="${NSYS_HOST_ROOT:-/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1}"
 EXPECTED_SRTCTL_COMMIT="${EXPECTED_SRTCTL_COMMIT:-}"
 EXPECTED_IMAGE="vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9"
@@ -131,8 +131,14 @@ for run_name in "${expected_runs[@]}"; do
         fail "${job_id}: result does not contain 64 x 4096 output tokens"
 
     if [[ "${run_name}" == *-sonnet-* ]]; then
-        require_file "${job_dir}/logs/profile-benchmark/sonnet-input-requests.json"
+        request_cache="sonnet-input-requests.json"
+    else
+        request_cache="random-input-requests.json"
     fi
+    require_file "${job_dir}/logs/profile-benchmark/${request_cache}"
+
+    grep -Fq "External prefix cache hit rate:" "${worker_logs[0]}" || \
+        fail "${job_id}: Mooncake external-prefix metrics are absent"
 
     if find "${job_dir}/logs" -type f \
         \( -name '*.out' -o -name '*.log' \) \

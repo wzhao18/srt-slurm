@@ -100,6 +100,7 @@ run_phase() {
     local request_cache_mode="${3:-}"
     local -a save_args=()
     local -a dataset_args=()
+    local request_cache_path="/logs/profile-benchmark/${DATASET_NAME}-input-requests.json"
     if [[ -n "${result_file}" ]]; then
         save_args=(
             --save-result
@@ -109,7 +110,6 @@ run_phase() {
     fi
 
     if [[ "${DATASET_NAME}" == "sonnet" ]]; then
-        local request_cache_path="/logs/profile-benchmark/sonnet-input-requests.json"
         dataset_args=(
             --dataset-name sonnet
             --dataset-path "${TEXT_CORPUS_PATH}"
@@ -131,6 +131,11 @@ run_phase() {
             --random-range-ratio 1.0
             --random-num-workers 8
         )
+        if [[ "${request_cache_mode}" == "save" ]]; then
+            dataset_args+=(--save-input-requests "${request_cache_path}")
+        elif [[ "${request_cache_mode}" == "load" ]]; then
+            dataset_args+=(--load-input-requests "${request_cache_path}")
+        fi
     fi
 
     "${PYTHON_BIN}" -u "${BENCHMARK_SCRIPT}" \
@@ -276,11 +281,7 @@ mkdir -p /logs/profile-benchmark
 
 echo "Cache fill: dataset=${DATASET_NAME}, ${NUM_PROMPTS} prompts, ISL=${ISL}, OSL=${CACHE_FILL_OSL}, concurrency=${CONCURRENCY}"
 fill_result_name="cache_fill_isl${ISL}_osl${CACHE_FILL_OSL}_c${CONCURRENCY}.json"
-if [[ "${DATASET_NAME}" == "sonnet" ]]; then
-    run_phase "${CACHE_FILL_OSL}" "${fill_result_name}" save
-else
-    run_phase "${CACHE_FILL_OSL}" "${fill_result_name}"
-fi
+run_phase "${CACHE_FILL_OSL}" "${fill_result_name}" save
 require_completed_requests "/logs/profile-benchmark/${fill_result_name}"
 
 echo "Cache fill complete; launching the identical-prompt replay"
@@ -298,13 +299,8 @@ eplb_count_before_replay=0
 if [[ "${WAIT_FOR_EPLB_REBALANCE}" == "1" ]]; then
     eplb_count_before_replay="$(eplb_rearrangement_count)"
 fi
-if [[ "${DATASET_NAME}" == "sonnet" ]]; then
-    run_phase "${REPLAY_OSL}" \
-        "results_isl${ISL}_osl${REPLAY_OSL}_c${CONCURRENCY}.json" load &
-else
-    run_phase "${REPLAY_OSL}" \
-        "results_isl${ISL}_osl${REPLAY_OSL}_c${CONCURRENCY}.json" &
-fi
+run_phase "${REPLAY_OSL}" \
+    "results_isl${ISL}_osl${REPLAY_OSL}_c${CONCURRENCY}.json" load &
 replay_pid=$!
 unset SRT_BENCH_DECODE_ACTIVE_MARKER SRT_BENCH_DECODE_ACTIVE_TARGET
 wait_for_decode_window "${decode_marker}" "${replay_pid}"

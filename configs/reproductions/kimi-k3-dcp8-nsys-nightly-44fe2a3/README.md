@@ -105,7 +105,7 @@ configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/submit_all.sh
 The submission script first validates all four configs with `srtctl dry-run`, then submits each config separately with a meaningful output directory under:
 
 ```text
-output_nsys_reproduction/nightly-44fe2a3/<config-name>/<job-id>/
+output_nsys_collection/<config-name>/<job-id>/
 ```
 
 Pass an alternate output root as the first argument to `submit_all.sh` if desired.
@@ -114,16 +114,16 @@ Pass an alternate output root as the first argument to `submit_all.sh` if desire
 
 ## Workload and capture semantics
 
-Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It fills the prefix cache with 64 exact 131,072-token prompts and one output token, then replays the same prompts with 4,096 output tokens. Nsight Systems starts only after the requested number of streams reaches decode.
+Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It fills the prefix cache with 64 exact 131,072-token prompts and one output token, serializes those finalized prompts, then reloads the same requests with 4,096 output tokens. Nsight Systems starts only after the requested number of streams reaches decode.
 
-- `*-natural.yaml` uses deterministic random-token prompts without forced expert balancing. This exercises the model's unmodified router.
+- `*-natural.yaml` uses random-token prompts without forced expert balancing. The exact generated prompts are serialized before cache fill and reloaded for replay, so reproduction does not depend on multiprocessing order. This exercises the model's unmodified router.
 - `*-sonnet.yaml` uses exact-length prompts generated from the bundled Shakespeare corpus and reuses the serialized requests for the replay.
 - MXFP4 natural, MXFP4 Sonnet, and NVFP4 natural wait for 64 active decode streams and three stable engine samples.
 - NVFP4 Sonnet starts at 53 active streams, matching historical run `597833`, which could not sustain all 64 streams simultaneously during the capture window.
 
-All recipes use DSpark K=4 with the historical synthetic acceptance length of 3.36, FP8 KV cache, TokenSpeed MLA, FlashInfer autotuning, a 512-token maximum CUDA graph capture size, and GPU-local prefix replay.
+All recipes use DSpark K=4 with the historical synthetic acceptance length of 3.36, FP8 KV cache, TokenSpeed MLA, FlashInfer autotuning, a 512-token maximum CUDA graph capture size, and the historical embedded Mooncake prefix store.
 
-The historical runs configured Mooncake, but their 64 x 131,072-token working set fits in the logged GPU-local KV capacity and the benchmark never clears the local cache between fill and replay. The pinned nightly cannot initialize the historical connector combination: it forces DCP KV interleave to the 1,536-token block size when any KV connector is present, while all of its attention backends reject DSpark with nontrivial DCP interleave. These reproduction recipes therefore omit the inactive external connector and explicitly retain token-level interleave (`cp-kv-cache-interleave-size: 1`). This avoids modifying the pinned image while preserving the decode-compute path captured by Nsight Systems.
+The historical decode windows materially used Mooncake: their cumulative external-prefix hit rates reached 26.9% to 36.5%. Without the connector, the pinned image admitted only 45 to 51 of the 64 replay requests because the GPU-local hybrid-cache working set was exhausted. PR #54277 in the pinned image also forces DCP KV interleave to the 1,536-token block size when a connector is present, making this DSpark configuration invalid and causing an illegal memory access during long cache fill. The job-local reverse patch restores the earlier DCP cache layout; the recipes then enable the historical Mooncake connector and explicitly retain token-level interleave (`cp-kv-cache-interleave-size: 1`).
 
 ## Required artifacts and checks
 
