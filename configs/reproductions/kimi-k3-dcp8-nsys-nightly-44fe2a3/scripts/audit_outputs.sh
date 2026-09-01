@@ -57,7 +57,12 @@ for run_name in "${expected_runs[@]}"; do
     fingerprint="${job_dir}/logs/fingerprint_agg_w0.json"
     benchmark="${job_dir}/logs/benchmark.out"
     fill_result="${job_dir}/logs/profile-benchmark/cache_fill_isl131072_osl1_c64.json"
-    result="${job_dir}/logs/profile-benchmark/results_isl131072_osl4096_c64.json"
+    if [[ "${run_name}" == "kimi-k3-nvfp4-dcp8-dspark4-sonnet-"* ]]; then
+        replay_osl=4096
+    else
+        replay_osl=8192
+    fi
+    result="${job_dir}/logs/profile-benchmark/results_isl131072_osl${replay_osl}_c64.json"
 
     for path in \
         "${config}" \
@@ -127,8 +132,9 @@ for run_name in "${expected_runs[@]}"; do
         fail "${job_id}: result does not contain 64 completed requests"
     grep -Fq '"total_input_tokens": 8388608' "${result}" || \
         fail "${job_id}: result does not contain 64 x 131072 input tokens"
-    grep -Fq '"total_output_tokens": 262144' "${result}" || \
-        fail "${job_id}: result does not contain 64 x 4096 output tokens"
+    expected_output_tokens=$((64 * replay_osl))
+    grep -Fq "\"total_output_tokens\": ${expected_output_tokens}" "${result}" || \
+        fail "${job_id}: result does not contain 64 x ${replay_osl} output tokens"
 
     if [[ "${run_name}" == *-sonnet-* ]]; then
         request_cache="sonnet-input-requests.json"
