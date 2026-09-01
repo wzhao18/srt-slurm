@@ -17,6 +17,8 @@ The runtime is intentionally independent of a local vLLM or Dynamo checkout. All
 - the container's `python3` and Python packages for the benchmark client
 - the bundled Sonnet corpus with SHA-256 `e0e13a826912a4a81bb3a582aa73c4af0675bdeee6ddf6d505efb63d562d496f`
 
+The benchmark wrapper supplies fail-closed stubs for the unused Hugging Face Dataset and pandas CSV loaders. The random-token and Sonnet modes do not call either loader, so this avoids installing optional client packages into the runtime image while still failing clearly if an unsupported dataset mode is selected.
+
 There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.venv` in these recipes. The only local inputs are the three model snapshots, the checked-out `srt-slurm` source, and the cluster's Nsight Systems installation. The pinned nightly image does not contain `nsys`, so the recipes mount the complete CLI installation instead of borrowing a Python environment.
 
 ## Hardware and software prerequisites

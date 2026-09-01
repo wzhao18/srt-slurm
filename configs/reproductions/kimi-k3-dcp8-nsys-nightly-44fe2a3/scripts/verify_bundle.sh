@@ -16,6 +16,8 @@ fi
 echo "${CORPUS_SHA256}  ${BUNDLE_DIR}/assets/shakespeare.txt" | sha256sum --check
 bash -n "${BUNDLE_DIR}/scripts/profile_decode.sh"
 bash -n "${BUNDLE_DIR}/scripts/submit_all.sh"
+grep -Fq 'sys.modules["pandas"] = pandas_module' \
+    "${BUNDLE_DIR}/scripts/benchmark_serving_wrapper.py"
 
 mapfile -t configs < <(find "${BUNDLE_DIR}" -maxdepth 1 -name '*.yaml' -type f | sort)
 if [[ "${#configs[@]}" -ne 4 ]]; then
