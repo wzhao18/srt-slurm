@@ -76,7 +76,7 @@ for run_name in "${expected_runs[@]}"; do
         fail "${job_id}: recipe lock does not use the pinned Dynamo commit"
     grep -Fq "install: true" "${lock}" || \
         fail "${job_id}: recipe lock does not install pinned Dynamo"
-    lock_commit="$(awk '/^srtctl_commit:/ {print $2}' "${lock}")"
+    lock_commit="$(awk '$1 == "srtctl_commit:" {print $2}' "${lock}")"
     [[ -n "${lock_commit}" ]] || fail "${job_id}: srtctl commit is missing"
     if [[ -z "${EXPECTED_SRTCTL_COMMIT}" ]]; then
         EXPECTED_SRTCTL_COMMIT="${lock_commit}"
@@ -95,6 +95,18 @@ for run_name in "${expected_runs[@]}"; do
         fail "${job_id}: flashinfer-jit-cache is not pinned to 0.6.17"
     grep -Fq "\"VLLM_IMAGE_TAG\": \"${EXPECTED_IMAGE}\"" "${fingerprint}" || \
         fail "${job_id}: runtime image fingerprint does not match"
+
+    mapfile -t worker_logs < <(
+        find "${job_dir}/logs" -maxdepth 1 -type f -name '*_agg_w0.out' | sort
+    )
+    [[ "${#worker_logs[@]}" -eq 2 ]] || \
+        fail "${job_id}: expected two aggregate worker logs"
+    for worker_log in "${worker_logs[@]}"; do
+        grep -Fq "vLLM PR #54277 reverted in the job-local container overlay" \
+            "${worker_log}" || fail "${job_id}: PR #54277 was not reverted"
+        grep -Fq "All 2 nodes completed the patched runtime setup" \
+            "${worker_log}" || fail "${job_id}: runtime setup barrier was not reached"
+    done
 
     grep -Fq "benchmark python: /usr/bin/python3" "${benchmark}" || \
         fail "${job_id}: benchmark did not use container python3"

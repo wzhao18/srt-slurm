@@ -23,7 +23,7 @@ dynamo:
   install: true
   request_plane: "tcp"
 
-setup_script: "reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/install-flashinfer-0.6.17.sh"
+setup_script: "reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/install-flashinfer-0.6.17-revert-pr54277.sh"
 
 slurm:
   account: "coreai_comparch_inferencex"

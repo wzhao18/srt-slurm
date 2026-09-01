@@ -24,15 +24,17 @@ overlay. It does not read or modify the submitter's local vLLM or Dynamo
 virtual environments. The pinned commit reports package version `1.3.0` at
 runtime and contains the Kimi-K3 frontend tokenizer support required here.
 
-The nightly image is the immutable base runtime, but it contains FlashInfer
-0.6.18. That version reproducibly hit a CUDA illegal-memory-access failure in
-the TRTLLM ragged MLA prefill path after 53 of the 64 long-prefill requests.
-The historical successful traces used FlashInfer 0.6.17. Each recipe therefore
-runs the bundled setup script inside its job-container overlay to pin all three
-FlashInfer packages to 0.6.17 before vLLM starts. This does not modify the image,
-the host Python installation, or a local virtual environment. The artifact
-audit verifies the three effective package versions from the runtime
-fingerprint.
+The nightly image contains vLLM PR #54277. With DCP8 and DSpark, that code
+reproducibly triggered a CUDA illegal-memory-access failure after 53 of 54
+131,072-token cache-fill requests. Job `631140` applied the complete reverse
+diff in its container overlay and completed all 54 requests without an IMA.
+The historical successful traces also used FlashInfer 0.6.17, so each recipe
+pins the Python, cubin, and CUDA 13 JIT-cache packages to 0.6.17 and reverses
+PR #54277 before vLLM starts. A cross-node barrier prevents any rank from
+entering the distributed rendezvous before every node has finished this
+runtime setup. These operations do not modify the image, host Python
+installation, or a local virtual environment. The artifact audit verifies the
+effective package versions and patch/barrier markers from both worker logs.
 
 The benchmark wrapper supplies fail-closed stubs for the unused Hugging Face Dataset and pandas CSV loaders. The random-token and Sonnet modes do not call either loader, so this avoids installing optional client packages into the runtime image while still failing clearly if an unsupported dataset mode is selected.
 
@@ -63,7 +65,7 @@ There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.v
 - The `coreai_comparch_inferencex` account and `batch` partition, or equivalent values edited in all four YAML files.
 - `uv` on the login node for the submission-side `srtctl` environment.
 - Nsight Systems CLI 2025.4.1. It is expected at `/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1` by default; set `NSYS_HOST_ROOT` if the cluster installs it elsewhere.
-- A checkout of this repository at tag `kimi-k3-dcp8-nsys-nightly-44fe2a3`.
+- A checkout of the revision documented with the final reproduction results.
 
 The model snapshots are pinned by Hugging Face identity:
 
@@ -80,7 +82,7 @@ The recipes mount the target checkpoint as `/model` and the draft checkpoint as 
 From the repository root:
 
 ```bash
-git checkout kimi-k3-dcp8-nsys-nightly-44fe2a3
+git checkout wzhao/kimi-k3-dcp8-nsys-nightly44fe2a3
 make setup ARCH=aarch64
 uv sync --python 3.12
 ```
