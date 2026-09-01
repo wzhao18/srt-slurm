@@ -17,6 +17,7 @@ fi
 echo "${CORPUS_SHA256}  ${BUNDLE_DIR}/assets/shakespeare.txt" | sha256sum --check
 bash -n "${BUNDLE_DIR}/scripts/profile_decode.sh"
 bash -n "${BUNDLE_DIR}/scripts/install-flashinfer-0.6.17.sh"
+bash -n "${BUNDLE_DIR}/scripts/install-flashinfer-0.6.17-revert-pr54277.sh"
 bash -n "${BUNDLE_DIR}/scripts/audit_outputs.sh"
 bash -n "${BUNDLE_DIR}/scripts/analyze_all.sh"
 bash -n "${BUNDLE_DIR}/scripts/submit_all.sh"
@@ -47,7 +48,7 @@ for config in "${configs[@]}"; do
     fi
     grep -Fq 'hash: "ba83080ecd31c1ce918559e576d3c5bc9e092ff1"' "${config}"
     grep -Fq 'install: true' "${config}"
-    grep -Fq 'setup_script: "reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/install-flashinfer-0.6.17.sh"' "${config}"
+    grep -Fq 'setup_script: "reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/install-flashinfer-0.6.17-revert-pr54277.sh"' "${config}"
     grep -Fq 'decode-context-parallel-size: 8' "${config}"
     grep -Fq 'tensor-parallel-size: 8' "${config}"
     grep -Fq 'cp-kv-cache-interleave-size: 1' "${config}"
