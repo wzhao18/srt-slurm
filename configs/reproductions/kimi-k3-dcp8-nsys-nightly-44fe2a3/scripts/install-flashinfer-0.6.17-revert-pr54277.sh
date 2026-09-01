@@ -134,6 +134,30 @@ diff --git a/vllm/v1/worker/gpu/spec_decode/speculator.py b/vllm/v1/worker/gpu/s
              num_reqs=num_reqs_padded,
 PATCH
 
+patch --batch --forward --directory "${site_packages}" --strip 1 <<'PATCH'
+diff --git a/vllm/config/vllm.py b/vllm/config/vllm.py
+--- a/vllm/config/vllm.py
++++ b/vllm/config/vllm.py
+@@ -2769,6 +2769,6 @@ class VllmConfig:
+         if (
+             self.kv_transfer_config is not None
+-            and self.kv_transfer_config.kv_connector is not None
++            and self.kv_transfer_config.has_connector("NixlConnector")
+             and self.parallel_config.cp_kv_cache_interleave_size != local_block_size
+         ):
+             interleave = self.parallel_config.cp_kv_cache_interleave_size
+@@ -2794,8 +2794,7 @@ class VllmConfig:
+         # cp_kv_cache_interleave_size is pinned to block_size for PD by each worker
+         pd_active = (
+             self.kv_transfer_config is not None
+-            and self.kv_transfer_config.kv_connector is not None
+-            and self.kv_transfer_config.is_kv_transfer_instance
++            and self.kv_transfer_config.has_connector("NixlConnector")
+         )
+         if self.parallel_config.decode_context_parallel_size > 1 and not pd_active:
+             assert (
+PATCH
+
 find "${site_packages}/vllm/v1" -type d -name __pycache__ -prune -exec rm -rf {} +
 
 if grep -q "supports_non_causal_multi_token_dcp: ClassVar\[bool\] = True" \
@@ -142,6 +166,13 @@ if grep -q "supports_non_causal_multi_token_dcp: ClassVar\[bool\] = True" \
     exit 1
 fi
 echo "vLLM PR #54277 reverted in the job-local container overlay"
+
+if sed -n '2740,2810p' "${site_packages}/vllm/config/vllm.py" \
+    | grep -q 'kv_transfer_config.kv_connector is not None'; then
+    echo "Generic KV connector DCP interleave override is still active" >&2
+    exit 1
+fi
+echo "DCP block interleave override limited to NixlConnector"
 
 # Do not let one node enter the distributed rendezvous while another node is
 # still downloading and installing its runtime overlay.

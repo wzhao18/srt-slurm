@@ -30,7 +30,15 @@ reproducibly triggered a CUDA illegal-memory-access failure after 53 of 54
 diff in its container overlay and completed all 54 requests without an IMA.
 The historical successful traces also used FlashInfer 0.6.17, so each recipe
 pins the Python, cubin, and CUDA 13 JIT-cache packages to 0.6.17 and reverses
-PR #54277 before vLLM starts. A cross-node barrier prevents any rank from
+PR #54277 before vLLM starts. The image also contains PR #50611, whose DCP
+interleave adjustment was applied to every KV connector even though the code
+and log message describe NIXL PD. Canary `631631` proved that Mooncake was
+therefore changing the explicit interleave from 1 to 1,536 and failing with
+`MTP with cp_kv_cache_interleave_size > 1 is not supported`. The overlay
+limits that adjustment and its validation bypass to `NixlConnector`; Mooncake
+continues to use the recipe's explicit interleave of 1.
+
+A cross-node barrier prevents any rank from
 entering the distributed rendezvous before every node has finished this
 runtime setup. `srt-slurm` labels setup invocations by process context, so
 Mooncake infrastructure and Dynamo frontend processes skip this worker-only
@@ -124,7 +132,7 @@ Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It f
 
 All recipes use DSpark K=4 with the historical synthetic acceptance length of 3.36, FP8 KV cache, TokenSpeed MLA, FlashInfer autotuning, a 512-token maximum CUDA graph capture size, and the historical embedded Mooncake prefix store.
 
-The historical decode windows materially used Mooncake: their cumulative external-prefix hit rates reached 26.9% to 36.5%. Without the connector, the pinned image admitted only 45 to 51 of the 64 replay requests because the GPU-local hybrid-cache working set was exhausted. PR #54277 in the pinned image also forces DCP KV interleave to the 1,536-token block size when a connector is present, making this DSpark configuration invalid and causing an illegal memory access during long cache fill. The job-local reverse patch restores the earlier DCP cache layout; the recipes then enable the historical Mooncake connector and explicitly retain token-level interleave (`cp-kv-cache-interleave-size: 1`).
+The historical decode windows materially used Mooncake: their cumulative external-prefix hit rates reached 26.9% to 36.5%. Without the connector, the pinned image admitted only 45 to 51 of the 64 replay requests because the GPU-local hybrid-cache working set was exhausted. PR #54277 caused the long-fill IMA, while PR #50611 incorrectly changed Mooncake's DCP KV interleave to the 1,536-token block size. The job-local overlay reverses #54277 and scopes #50611's interleave adjustment to NIXL; the recipes then enable the historical Mooncake connector and explicitly retain token-level interleave (`cp-kv-cache-interleave-size: 1`).
 
 ## Required artifacts and checks
 
