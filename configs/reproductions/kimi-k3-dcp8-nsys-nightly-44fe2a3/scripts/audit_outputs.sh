@@ -57,11 +57,7 @@ for run_name in "${expected_runs[@]}"; do
     fingerprint="${job_dir}/logs/fingerprint_agg_w0.json"
     benchmark="${job_dir}/logs/benchmark.out"
     fill_result="${job_dir}/logs/profile-benchmark/cache_fill_isl131072_osl1_c64.json"
-    if [[ "${run_name}" == "kimi-k3-nvfp4-dcp8-dspark4-sonnet-"* ]]; then
-        replay_osl=4096
-    else
-        replay_osl=8192
-    fi
+    replay_osl=8192
     result="${job_dir}/logs/profile-benchmark/results_isl131072_osl${replay_osl}_c64.json"
 
     for path in \

@@ -123,7 +123,7 @@ Pass an alternate output root as the first argument to `submit_all.sh` if desire
 
 ## Workload and capture semantics
 
-Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It fills the prefix cache with 64 exact 131,072-token prompts and one output token, serializes those finalized prompts, then reloads the same requests. Target-64 captures use 8,192 output tokens so the earliest requests remain active while the pinned image admits all long-prefix replays; Nsight Systems still starts only after a stable 64-request decode batch. NVFP4 Sonnet retains the historical 4,096-token replay and 53-request capture target.
+Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It fills the prefix cache with 64 exact 131,072-token prompts and one output token, serializes those finalized prompts, then reloads the same requests with 8,192 output tokens. The longer replay keeps the earliest requests active while the pinned image admits all long-prefix replays. Nsight Systems starts only after the requested decode population is active.
 
 - `*-natural.yaml` uses random-token prompts without forced expert balancing. The exact generated prompts are serialized before cache fill and reloaded for replay, so reproduction does not depend on multiprocessing order. This exercises the model's unmodified router.
 - `*-sonnet.yaml` uses exact-length prompts generated from the bundled Shakespeare corpus and reuses the serialized requests for the replay.
@@ -144,7 +144,7 @@ git_state.txt
 recipe.lock.yaml
 logs/benchmark.out
 logs/fingerprint_agg_w0.json
-logs/profile-benchmark/results_isl131072_osl{4096,8192}_c64.json
+logs/profile-benchmark/results_isl131072_osl8192_c64.json
 logs/profiles/agg/*_profile_gpu0-1-2-3.nsys-rep
 ```
 
