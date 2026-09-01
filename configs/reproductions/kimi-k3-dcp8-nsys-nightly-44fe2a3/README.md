@@ -32,7 +32,9 @@ The historical successful traces also used FlashInfer 0.6.17, so each recipe
 pins the Python, cubin, and CUDA 13 JIT-cache packages to 0.6.17 and reverses
 PR #54277 before vLLM starts. A cross-node barrier prevents any rank from
 entering the distributed rendezvous before every node has finished this
-runtime setup. These operations do not modify the image, host Python
+runtime setup. `srt-slurm` labels setup invocations by process context, so
+Mooncake infrastructure and Dynamo frontend processes skip this worker-only
+overlay and cannot deadlock on the worker barrier. These operations do not modify the image, host Python
 installation, or a local virtual environment. The artifact audit verifies the
 effective package versions and patch/barrier markers from both worker logs.
 

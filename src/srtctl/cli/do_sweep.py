@@ -62,7 +62,9 @@ from srtctl.ports import (
 logger = logging.getLogger(__name__)
 
 
-def _build_setup_script_preamble(setup_script: object) -> str | None:
+def _build_setup_script_preamble(
+    setup_script: object, *, context: str
+) -> str | None:
     """Bash preamble that runs config.setup_script from /configs, mirroring the
     worker/frontend launch path. Returns None when no setup_script is configured.
     """
@@ -70,6 +72,7 @@ def _build_setup_script_preamble(setup_script: object) -> str | None:
         return None
     script_name = shlex.quote(setup_script)
     return (
+        f"export SRT_SETUP_CONTEXT={shlex.quote(context)} && "
         f"setup_script={script_name} && "
         'script_path="/configs/${setup_script}" && '
         'patch_script_path="/configs/patches/${setup_script}" && '
@@ -278,7 +281,10 @@ class SweepOrchestrator(
         # container whose stock mooncake_master is ABI-mismatched (e.g. CUDA-12
         # binary needing libcudart.so.12 on a cuda13 image) gets the correct
         # mooncake wheel installed first. /configs is mounted on the master.
-        bash_preamble = _build_setup_script_preamble(getattr(self.config, "setup_script", None))
+        bash_preamble = _build_setup_script_preamble(
+            getattr(self.config, "setup_script", None),
+            context="mooncake-master",
+        )
 
         proc = start_srun_process(
             command=_build_mooncake_master_command(mooncake_cfg),

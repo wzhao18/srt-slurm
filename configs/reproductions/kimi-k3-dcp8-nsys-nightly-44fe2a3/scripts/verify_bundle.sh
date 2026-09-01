@@ -29,6 +29,8 @@ grep -Fq 'SONNET_CLIENT_SMOKE_OK' \
     "${BUNDLE_DIR}/scripts/smoke_sonnet_requests.py"
 grep -Fq 'sys.modules["pandas"] = pandas_module' \
     "${BUNDLE_DIR}/scripts/benchmark_serving_wrapper.py"
+grep -Fq 'SRT_SETUP_CONTEXT:-worker' \
+    "${BUNDLE_DIR}/scripts/install-flashinfer-0.6.17-revert-pr54277.sh"
 BENCHMARK_SCRIPT="${SRT_SLURM_ROOT}/src/srtctl/benchmarks/scripts/sa-bench/benchmark_serving.py"
 grep -Fq -- '--sonnet-exact-input-len' "${BENCHMARK_SCRIPT}"
 grep -Fq -- '--save-input-requests' "${BENCHMARK_SCRIPT}"

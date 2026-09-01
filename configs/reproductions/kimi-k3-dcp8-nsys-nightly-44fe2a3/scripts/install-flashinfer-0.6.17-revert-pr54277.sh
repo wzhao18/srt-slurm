@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+if [[ "${SRT_SETUP_CONTEXT:-worker}" != "worker" ]]; then
+    echo "Skipping worker-only vLLM runtime overlay for ${SRT_SETUP_CONTEXT}"
+    exit 0
+fi
+
 /configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/install-flashinfer-0.6.17.sh
 
 site_packages="/usr/local/lib/python3.12/dist-packages"

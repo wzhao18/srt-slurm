@@ -143,6 +143,7 @@ class DynamoFrontend:
         if isinstance(setup_script, str) and setup_script:
             script_name = shlex.quote(setup_script)
             parts.append(
+                "export SRT_SETUP_CONTEXT=frontend && "
                 f"setup_script={script_name} && "
                 'script_path="/configs/${setup_script}" && '
                 'patch_script_path="/configs/patches/${setup_script}" && '
