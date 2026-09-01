@@ -12,10 +12,15 @@ This bundle reproduces the DCP8 decode traces represented by the four runs below
 The runtime is intentionally independent of a local vLLM or Dynamo checkout. All four recipes use:
 
 - `vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9`
-- `ai-dynamo==1.2.1`, installed into that container by `srt-slurm`
+- `ai-dynamo==1.4.2`, installed into that container by `srt-slurm`
 - Nsight Systems CLI 2025.4.1, mounted read-only from the cluster installation
 - the container's `python3` and Python packages for the benchmark client
 - the bundled Sonnet corpus with SHA-256 `e0e13a826912a4a81bb3a582aa73c4af0675bdeee6ddf6d505efb63d562d496f`
+
+Dynamo 1.4.2 is required rather than 1.2.1. The older Rust frontend rejects
+Kimi-K3 metadata with `Unsupported tiktoken model_type 'kimi_k3'`; 1.4.2 is
+the released Dynamo version whose Kimi-K3 recipe includes the updated
+frontend tokenizer.
 
 The benchmark wrapper supplies fail-closed stubs for the unused Hugging Face Dataset and pandas CSV loaders. The random-token and Sonnet modes do not call either loader, so this avoids installing optional client packages into the runtime image while still failing clearly if an unsupported dataset mode is selected.
 
@@ -91,7 +96,7 @@ output_nsys_reproduction/nightly-44fe2a3/<config-name>/<job-id>/
 
 Pass an alternate output root as the first argument to `submit_all.sh` if desired.
 
-`submit_all.sh` sets `SRTCTL_NSYS_BIN=/opt/nsight-systems/bin/nsys`, and every recipe mounts `${NSYS_HOST_ROOT}` at `/opt/nsight-systems`. This uses the `srt-slurm` profiler's explicit Nsight binary override, so it does not depend on the submitting shell's module state or `PATH`. The recipes omit `router-session-affinity-ttl-secs` because the pinned `ai-dynamo==1.2.1` CLI does not support that newer option.
+`submit_all.sh` sets `SRTCTL_NSYS_BIN=/opt/nsight-systems/bin/nsys`, and every recipe mounts `${NSYS_HOST_ROOT}` at `/opt/nsight-systems`. This uses the `srt-slurm` profiler's explicit Nsight binary override, so it does not depend on the submitting shell's module state or `PATH`.
 
 ## Workload and capture semantics
 
@@ -124,7 +129,7 @@ For Sonnet runs, it also contains `logs/profile-benchmark/sonnet-input-requests.
 
 Before accepting a trace, verify:
 
-1. `fingerprint_agg_w0.json` reports the vLLM version from the pinned image and Dynamo `1.2.1`.
+1. `fingerprint_agg_w0.json` reports the vLLM version from the pinned image and Dynamo `1.4.2`.
 2. `benchmark.out` reports the container `python3`, not a Lustre virtual environment.
 3. `benchmark.out` reaches the decode-only window and exits successfully.
 4. Both `.nsys-rep` files are non-empty and `nsys stats` can open them.
@@ -140,3 +145,68 @@ The auditor requires exactly one job directory for each named reproduction,
 checks the pinned image and runtime fingerprints, confirms all 64 requests and
 their exact token counts completed, verifies the Sonnet request caches, rejects
 fatal worker errors, and opens all eight reports with `nsys stats`.
+
+## Kernel-step analysis
+
+The complete four-run analysis is automated:
+
+```bash
+configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/analyze_all.sh
+```
+
+It exports only the CUDA kernel and string tables, aggregates all eight GPUs
+for each run, writes a JSON and Markdown summary per run under
+`output_nsys_reproduction/nightly-44fe2a3/analysis/`, and renders separate
+MXFP4-versus-NVFP4 tables for natural and Sonnet routing. The commands below
+show the equivalent per-run workflow.
+
+Export both node reports for one run to SQLite with the same Nsight Systems
+installation that recorded them:
+
+```bash
+mkdir -p analysis/mxfp4-natural
+index=0
+for report in output_nsys_reproduction/nightly-44fe2a3/\
+kimi-k3-mxfp4-dcp8-dspark4-natural-nightly44fe2a3-128k-nsys/*/\
+logs/profiles/agg/*.nsys-rep; do
+    /cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1/bin/nsys export \
+        --type sqlite \
+        --output "analysis/mxfp4-natural/node-${index}.sqlite" \
+        "${report}"
+    index=$((index + 1))
+done
+```
+
+Then aggregate every captured GPU on both nodes. The analyzer identifies a
+decode step from the KDA layer sequence, classifies all 93 target-model layers,
+and reports both summed GPU activity and start-to-start decode cadence:
+
+```bash
+.venv/bin/python \
+    configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/\
+analyze_dcp_trace.py \
+    --variant mxfp4_dcp8 \
+    --aggregation mean \
+    --output-json analysis/mxfp4-natural/summary.json \
+    --worker-log "$(find output_nsys_reproduction/nightly-44fe2a3/\
+kimi-k3-mxfp4-dcp8-dspark4-natural-nightly44fe2a3-128k-nsys \
+-name '*_agg_w0.out' | sort | head -1)" \
+    analysis/mxfp4-natural/node-0.sqlite \
+    analysis/mxfp4-natural/node-1.sqlite
+```
+
+Use `--variant nvfp4_dcp8` for the NVFP4 reports. Repeat this for natural and
+Sonnet inputs rather than combining workloads; routing changes the MoE kernel
+distribution and therefore must remain visible in the comparison.
+
+After generating the MXFP4 and NVFP4 JSON summaries for one workload, render
+the comparison table with:
+
+```bash
+.venv/bin/python \
+    configs/reproductions/kimi-k3-dcp8-nsys-nightly-44fe2a3/scripts/\
+render_dcp_comparison.py \
+    --title "Natural routing" \
+    --mxfp4 analysis/mxfp4-natural/summary.json \
+    --nvfp4 analysis/nvfp4-natural/summary.json
+```

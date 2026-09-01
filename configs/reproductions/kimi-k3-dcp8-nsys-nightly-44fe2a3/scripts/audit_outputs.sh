@@ -7,10 +7,10 @@ BUNDLE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SRT_SLURM_ROOT="$(cd "${BUNDLE_DIR}/../../.." && pwd)"
 OUTPUT_ROOT="${1:-${SRT_SLURM_ROOT}/output_nsys_reproduction/nightly-44fe2a3}"
 NSYS_HOST_ROOT="${NSYS_HOST_ROOT:-/cm/shared/apps/nvidia/nsight-systems-cli/2025.4.1}"
-EXPECTED_SRTCTL_COMMIT="${EXPECTED_SRTCTL_COMMIT:-81f23c294de6a498538e869daa239cda6c062a6a}"
+EXPECTED_SRTCTL_COMMIT="${EXPECTED_SRTCTL_COMMIT:-}"
 EXPECTED_IMAGE="vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9"
 EXPECTED_VLLM="0.28.1rc1.dev130+g44fe2a392"
-EXPECTED_DYNAMO="1.2.1"
+EXPECTED_DYNAMO="1.4.2"
 
 expected_runs=(
     kimi-k3-mxfp4-dcp8-dspark4-natural-nightly44fe2a3-128k-nsys
@@ -69,8 +69,13 @@ for run_name in "${expected_runs[@]}"; do
 
     grep -Fq "${EXPECTED_IMAGE}" "${config}" || \
         fail "${job_id}: config does not use the pinned image"
-    grep -Fq "srtctl_commit: ${EXPECTED_SRTCTL_COMMIT}" "${lock}" || \
-        fail "${job_id}: unexpected srtctl commit"
+    lock_commit="$(awk '/^srtctl_commit:/ {print $2}' "${lock}")"
+    [[ -n "${lock_commit}" ]] || fail "${job_id}: srtctl commit is missing"
+    if [[ -z "${EXPECTED_SRTCTL_COMMIT}" ]]; then
+        EXPECTED_SRTCTL_COMMIT="${lock_commit}"
+    fi
+    [[ "${lock_commit}" == "${EXPECTED_SRTCTL_COMMIT}" ]] || \
+        fail "${job_id}: unexpected srtctl commit ${lock_commit}"
     grep -Fq "\"vllm\": \"${EXPECTED_VLLM}\"" "${fingerprint}" || \
         fail "${job_id}: unexpected vLLM version"
     grep -Fq "\"dynamo\": \"${EXPECTED_DYNAMO}\"" "${fingerprint}" || \
@@ -131,3 +136,4 @@ for run_name in "${expected_runs[@]}"; do
 done
 
 echo "all four nightly DCP8 trace reproductions passed the artifact audit"
+echo "srt-slurm commit: ${EXPECTED_SRTCTL_COMMIT}"

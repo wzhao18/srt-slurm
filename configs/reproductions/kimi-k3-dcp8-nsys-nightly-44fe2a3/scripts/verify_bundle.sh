@@ -17,7 +17,12 @@ fi
 echo "${CORPUS_SHA256}  ${BUNDLE_DIR}/assets/shakespeare.txt" | sha256sum --check
 bash -n "${BUNDLE_DIR}/scripts/profile_decode.sh"
 bash -n "${BUNDLE_DIR}/scripts/audit_outputs.sh"
+bash -n "${BUNDLE_DIR}/scripts/analyze_all.sh"
 bash -n "${BUNDLE_DIR}/scripts/submit_all.sh"
+grep -Fq 'Measured decode cadence p90' \
+    "${BUNDLE_DIR}/scripts/analyze_dcp_trace.py"
+grep -Fq 'Deployment-total KV capacity' \
+    "${BUNDLE_DIR}/scripts/render_dcp_comparison.py"
 grep -Fq 'SONNET_CLIENT_SMOKE_OK' \
     "${BUNDLE_DIR}/scripts/smoke_sonnet_requests.py"
 grep -Fq 'sys.modules["pandas"] = pandas_module' \
@@ -39,7 +44,7 @@ for config in "${configs[@]}"; do
         echo "${config}: expected two pinned image declarations" >&2
         exit 1
     fi
-    grep -Fq 'version: "1.2.1"' "${config}"
+    grep -Fq 'version: "1.4.2"' "${config}"
     grep -Fq 'decode-context-parallel-size: 8' "${config}"
     grep -Fq 'tensor-parallel-size: 8' "${config}"
     grep -Fq 'cp-kv-cache-interleave-size: 1' "${config}"
@@ -47,7 +52,7 @@ for config in "${configs[@]}"; do
     grep -Fq '${NSYS_HOST_ROOT}:/opt/nsight-systems' "${config}"
     grep -Fq 'PROFILE_ISL: "131072"' "${config}"
     if grep -Fq 'router-session-affinity-ttl-secs' "${config}"; then
-        echo "${config}: ai-dynamo 1.2.1 does not accept router-session-affinity-ttl-secs" >&2
+        echo "${config}: router-session-affinity is not part of this reproduction" >&2
         exit 1
     fi
     if grep -Eq 'kv-transfer-config:|mooncake_kv_store:' "${config}"; then
