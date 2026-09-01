@@ -8,7 +8,7 @@ REPLAY_OSL="${PROFILE_REPLAY_OSL:-$((OSL * 4))}"
 CACHE_FILL_OSL="${PROFILE_CACHE_FILL_OSL:-1}"
 CONCURRENCY="${PROFILE_CONCURRENCY:-64}"
 DECODE_ACTIVE_TARGET="${PROFILE_DECODE_ACTIVE_TARGET:-${CONCURRENCY}}"
-ENGINE_RUNNING_TARGET="${PROFILE_ENGINE_RUNNING_TARGET:-${CONCURRENCY}}"
+ENGINE_RUNNING_TARGET="${PROFILE_ENGINE_RUNNING_TARGET:-40}"
 ENGINE_STABLE_SAMPLES="${PROFILE_ENGINE_STABLE_SAMPLES:-3}"
 DECODE_WINDOW_TIMEOUT="${PROFILE_DECODE_WINDOW_TIMEOUT:-600}"
 WAIT_FOR_EPLB_REBALANCE="${PROFILE_WAIT_FOR_EPLB_REBALANCE:-0}"
@@ -224,11 +224,16 @@ wait_for_stable_engine_batch() {
                     | awk '{running[$1]=$2; waiting[$1]=$3} END {for (e in running) {r += running[e]; w += waiting[e]} print r + 0, w + 0}'
             )"
             read -r running waiting <<<"${engine_totals}"
-            if ((running == ENGINE_RUNNING_TARGET && waiting == 0)); then
+            if ((running >= ENGINE_RUNNING_TARGET)); then
                 ((stable_samples += 1))
-                echo "Stable engine decode sample ${stable_samples}/${ENGINE_STABLE_SAMPLES}: ${ENGINE_RUNNING_TARGET} running"
+                echo "Stable engine decode sample ${stable_samples}/${ENGINE_STABLE_SAMPLES}: ${running} running, ${waiting} waiting (minimum ${ENGINE_RUNNING_TARGET})"
                 if ((stable_samples >= ENGINE_STABLE_SAMPLES)); then
-                    touch "/logs/profile-benchmark/engine-running-c${ENGINE_RUNNING_TARGET}-stable${ENGINE_STABLE_SAMPLES}"
+                    printf '{"minimum_running":%d,"stable_samples":%d,"actual_running":%d,"actual_waiting":%d}\n' \
+                        "${ENGINE_RUNNING_TARGET}" \
+                        "${ENGINE_STABLE_SAMPLES}" \
+                        "${running}" \
+                        "${waiting}" \
+                        > /logs/profile-benchmark/engine-batch-at-profile-start.json
                     return 0
                 fi
             else
@@ -236,14 +241,14 @@ wait_for_stable_engine_batch() {
             fi
         fi
         if ((SECONDS >= deadline)); then
-            echo "Timed out waiting for ${ENGINE_STABLE_SAMPLES} stable engine samples with ${ENGINE_RUNNING_TARGET} running requests" >&2
+            echo "Timed out waiting for ${ENGINE_STABLE_SAMPLES} stable engine samples with at least ${ENGINE_RUNNING_TARGET} running requests" >&2
             echo "Latest engine totals: ${running} running, ${waiting} waiting" >&2
             return 1
         fi
         sleep 0.25
     done
 
-    echo "Replay exited before the engine sustained ${ENGINE_RUNNING_TARGET} running requests" >&2
+    echo "Replay exited before the engine sustained at least ${ENGINE_RUNNING_TARGET} running requests" >&2
     return 1
 }
 

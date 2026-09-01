@@ -127,8 +127,8 @@ Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It f
 
 - `*-natural.yaml` uses random-token prompts without forced expert balancing. The exact generated prompts are serialized before cache fill and reloaded for replay, so reproduction does not depend on multiprocessing order. This exercises the model's unmodified router.
 - `*-sonnet.yaml` uses exact-length prompts generated from the bundled Shakespeare corpus and reuses the serialized requests for the replay.
-- MXFP4 natural, MXFP4 Sonnet, and NVFP4 natural wait for 64 active decode streams and three stable engine samples.
-- NVFP4 Sonnet starts at 53 active streams, matching historical run `597833`, which could not sustain all 64 streams simultaneously during the capture window.
+- MXFP4 natural, MXFP4 Sonnet, and NVFP4 natural wait for 64 active client decode streams. NVFP4 Sonnet starts at 53, matching historical run `597833`.
+- Capture additionally requires three engine samples with at least 40 running requests. Waiting requests are allowed because long-prefix admission and preemption are part of the c64 workload. The actual running and waiting population is recorded in `engine-batch-at-profile-start.json`.
 
 All recipes use DSpark K=4 with the historical synthetic acceptance length of 3.36, FP8 KV cache, TokenSpeed MLA, FlashInfer autotuning, a 512-token maximum CUDA graph capture size, and the historical embedded Mooncake prefix store.
 
@@ -145,6 +145,7 @@ recipe.lock.yaml
 logs/benchmark.out
 logs/fingerprint_agg_w0.json
 logs/profile-benchmark/results_isl131072_osl8192_c64.json
+logs/profile-benchmark/engine-batch-at-profile-start.json
 logs/profiles/agg/*_profile_gpu0-1-2-3.nsys-rep
 ```
 

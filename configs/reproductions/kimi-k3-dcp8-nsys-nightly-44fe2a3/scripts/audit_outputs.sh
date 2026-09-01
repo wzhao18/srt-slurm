@@ -57,6 +57,7 @@ for run_name in "${expected_runs[@]}"; do
     fingerprint="${job_dir}/logs/fingerprint_agg_w0.json"
     benchmark="${job_dir}/logs/benchmark.out"
     fill_result="${job_dir}/logs/profile-benchmark/cache_fill_isl131072_osl1_c64.json"
+    engine_batch="${job_dir}/logs/profile-benchmark/engine-batch-at-profile-start.json"
     replay_osl=8192
     result="${job_dir}/logs/profile-benchmark/results_isl131072_osl${replay_osl}_c64.json"
 
@@ -67,6 +68,7 @@ for run_name in "${expected_runs[@]}"; do
         "${benchmark}" \
         "${fingerprint}" \
         "${fill_result}" \
+        "${engine_batch}" \
         "${result}"; do
         require_file "${path}"
     done
@@ -128,6 +130,9 @@ for run_name in "${expected_runs[@]}"; do
         fail "${job_id}: result does not contain 64 completed requests"
     grep -Fq '"total_input_tokens": 8388608' "${result}" || \
         fail "${job_id}: result does not contain 64 x 131072 input tokens"
+    grep -Eq '"actual_running":(4[0-9]|[5-9][0-9]|[1-9][0-9]{2,})' \
+        "${engine_batch}" || \
+        fail "${job_id}: capture began below the 40-request engine threshold"
     expected_output_tokens=$((64 * replay_osl))
     grep -Fq "\"total_output_tokens\": ${expected_output_tokens}" "${result}" || \
         fail "${job_id}: result does not contain 64 x ${replay_osl} output tokens"
