@@ -281,12 +281,19 @@ def analyze(
     rows_by_device: dict[tuple[int, int], list[Kernel]] = defaultdict(list)
     for trace_index, trace in enumerate(traces):
         with sqlite3.connect(f"file:{trace.resolve()}?mode=ro", uri=True) as db:
+            kernel_columns = {
+                row[1]
+                for row in db.execute(
+                    "PRAGMA table_info(CUPTI_ACTIVITY_KIND_KERNEL)"
+                )
+            }
+            graph_id = "k.graphId" if "graphId" in kernel_columns else "NULL"
             rows = [
                 Kernel(*row)
                 for row in db.execute(
-                    """
+                    f"""
                     SELECT k.deviceId, k.start, k.end, s.value,
-                           k.graphNodeId, k.graphId
+                           k.graphNodeId, {graph_id}
                     FROM CUPTI_ACTIVITY_KIND_KERNEL AS k
                     JOIN StringIds AS s ON s.id = k.demangledName
                     ORDER BY k.deviceId, k.start
@@ -427,7 +434,8 @@ def analyze(
         int(match.replace(",", ""))
         for worker_log in worker_logs
         for match in re.findall(
-            r"GPU KV cache size: ([0-9,]+) tokens", worker_log.read_text()
+            r"GPU KV cache size: ([0-9,]+) tokens",
+            worker_log.read_text(errors="replace"),
         )
     }
     if len(kv_capacities) > 1:
