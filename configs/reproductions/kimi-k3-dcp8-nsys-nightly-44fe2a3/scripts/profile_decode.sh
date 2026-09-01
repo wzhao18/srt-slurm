@@ -205,6 +205,7 @@ wait_for_stable_engine_batch() {
     local engine_totals=""
     local running=0
     local waiting=0
+    local total_outstanding=0
 
     if ((ENGINE_RUNNING_TARGET == 0)); then
         return 0
@@ -224,15 +225,21 @@ wait_for_stable_engine_batch() {
                     | awk '{running[$1]=$2; waiting[$1]=$3} END {for (e in running) {r += running[e]; w += waiting[e]} print r + 0, w + 0}'
             )"
             read -r running waiting <<<"${engine_totals}"
-            if ((running >= ENGINE_RUNNING_TARGET)); then
+            total_outstanding=$((running + waiting))
+            if ((
+                running >= ENGINE_RUNNING_TARGET
+                && total_outstanding >= CONCURRENCY
+            )); then
                 ((stable_samples += 1))
-                echo "Stable engine decode sample ${stable_samples}/${ENGINE_STABLE_SAMPLES}: ${running} running, ${waiting} waiting (minimum ${ENGINE_RUNNING_TARGET})"
+                echo "Stable engine decode sample ${stable_samples}/${ENGINE_STABLE_SAMPLES}: ${running} running, ${waiting} waiting, ${total_outstanding} outstanding (minimum ${ENGINE_RUNNING_TARGET} running and ${CONCURRENCY} outstanding)"
                 if ((stable_samples >= ENGINE_STABLE_SAMPLES)); then
-                    printf '{"minimum_running":%d,"stable_samples":%d,"actual_running":%d,"actual_waiting":%d}\n' \
+                    printf '{"minimum_running":%d,"minimum_outstanding":%d,"stable_samples":%d,"actual_running":%d,"actual_waiting":%d,"total_outstanding":%d}\n' \
                         "${ENGINE_RUNNING_TARGET}" \
+                        "${CONCURRENCY}" \
                         "${ENGINE_STABLE_SAMPLES}" \
                         "${running}" \
                         "${waiting}" \
+                        "${total_outstanding}" \
                         > /logs/profile-benchmark/engine-batch-at-profile-start.json
                     return 0
                 fi
@@ -241,14 +248,14 @@ wait_for_stable_engine_batch() {
             fi
         fi
         if ((SECONDS >= deadline)); then
-            echo "Timed out waiting for ${ENGINE_STABLE_SAMPLES} stable engine samples with at least ${ENGINE_RUNNING_TARGET} running requests" >&2
-            echo "Latest engine totals: ${running} running, ${waiting} waiting" >&2
+            echo "Timed out waiting for ${ENGINE_STABLE_SAMPLES} stable engine samples with at least ${ENGINE_RUNNING_TARGET} running and ${CONCURRENCY} outstanding requests" >&2
+            echo "Latest engine totals: ${running} running, ${waiting} waiting, ${total_outstanding} outstanding" >&2
             return 1
         fi
         sleep 0.25
     done
 
-    echo "Replay exited before the engine sustained at least ${ENGINE_RUNNING_TARGET} running requests" >&2
+    echo "Replay exited before the engine sustained at least ${ENGINE_RUNNING_TARGET} running and ${CONCURRENCY} outstanding requests" >&2
     return 1
 }
 
@@ -308,11 +315,15 @@ run_phase "${REPLAY_OSL}" \
     "results_isl${ISL}_osl${REPLAY_OSL}_c${CONCURRENCY}.json" load &
 replay_pid=$!
 unset SRT_BENCH_DECODE_ACTIVE_MARKER SRT_BENCH_DECODE_ACTIVE_TARGET
-wait_for_decode_window "${decode_marker}" "${replay_pid}"
 if [[ "${WAIT_FOR_EPLB_REBALANCE}" == "1" ]]; then
     wait_for_eplb_rebalance "${replay_pid}" "${eplb_count_before_replay}"
 fi
 wait_for_stable_engine_batch "${replay_pid}"
+if [[ -e "${decode_marker}" ]]; then
+    echo "Diagnostic active-stream marker observed: ${DECODE_ACTIVE_TARGET} streams"
+else
+    echo "Diagnostic active-stream marker not observed before capture"
+fi
 start_all_profiling
 wait "${replay_pid}"
 

@@ -115,8 +115,8 @@ for run_name in "${expected_runs[@]}"; do
         fail "${job_id}: benchmark did not use container python3"
     grep -Fq "Cache fill complete; launching the identical-prompt replay" \
         "${benchmark}" || fail "${job_id}: cache fill did not complete"
-    grep -Fq "Decode-only profile window reached:" "${benchmark}" || \
-        fail "${job_id}: decode-only window was not reached"
+    grep -Fq "Stable engine decode sample 3/3:" "${benchmark}" || \
+        fail "${job_id}: stable c64 engine window was not reached"
     grep -Eq 'Successful requests:[[:space:]]+64' "${benchmark}" || \
         fail "${job_id}: benchmark did not complete 64 requests"
     grep -Fq "Profiling results saved to /logs/profiles" "${benchmark}" || \
@@ -133,6 +133,13 @@ for run_name in "${expected_runs[@]}"; do
     grep -Eq '"actual_running":(4[0-9]|[5-9][0-9]|[1-9][0-9]{2,})' \
         "${engine_batch}" || \
         fail "${job_id}: capture began below the 40-request engine threshold"
+    total_outstanding="$(
+        sed -nE 's/.*"total_outstanding":([0-9]+).*/\1/p' "${engine_batch}"
+    )"
+    [[ -n "${total_outstanding}" ]] || \
+        fail "${job_id}: capture metadata lacks total_outstanding"
+    ((total_outstanding >= 64)) || \
+        fail "${job_id}: capture began with fewer than 64 outstanding requests"
     expected_output_tokens=$((64 * replay_osl))
     grep -Fq "\"total_output_tokens\": ${expected_output_tokens}" "${result}" || \
         fail "${job_id}: result does not contain 64 x ${replay_osl} output tokens"

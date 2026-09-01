@@ -123,12 +123,12 @@ Pass an alternate output root as the first argument to `submit_all.sh` if desire
 
 ## Workload and capture semantics
 
-Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It fills the prefix cache with 64 exact 131,072-token prompts and one output token, serializes those finalized prompts, then reloads the same requests with 8,192 output tokens. The longer replay keeps the earliest requests active while the pinned image admits all long-prefix replays. Nsight Systems starts only after the requested decode population is active.
+Each job starts one aggregated TP8+DCP8 worker spanning two four-GPU nodes. It fills the prefix cache with 64 exact 131,072-token prompts and one output token, serializes those finalized prompts, then reloads the same requests with 8,192 output tokens. The longer replay keeps the workload active while the pinned image admits the long-prefix replays. Nsight Systems starts after three fresh engine samples each report at least 40 running requests and at least 64 total running plus waiting requests.
 
 - `*-natural.yaml` uses random-token prompts without forced expert balancing. The exact generated prompts are serialized before cache fill and reloaded for replay, so reproduction does not depend on multiprocessing order. This exercises the model's unmodified router.
 - `*-sonnet.yaml` uses exact-length prompts generated from the bundled Shakespeare corpus and reuses the serialized requests for the replay.
-- MXFP4 natural, MXFP4 Sonnet, and NVFP4 natural wait for 64 active client decode streams. NVFP4 Sonnet starts at 53, matching historical run `597833`.
-- Capture additionally requires three engine samples with at least 40 running requests. Waiting requests are allowed because long-prefix admission and preemption are part of the c64 workload. The actual running and waiting population is recorded in `engine-batch-at-profile-start.json`.
+- All variants submit 64 concurrent client requests. The active-stream marker remains diagnostic because first-token admission is staggered and does not reliably make all response streams active simultaneously.
+- Capture requires three fresh engine samples with at least 40 running requests and 64 total outstanding requests. Waiting requests are allowed because long-prefix admission and preemption are part of the c64 workload. The actual running, waiting, and total outstanding populations are recorded in `engine-batch-at-profile-start.json`.
 
 All recipes use DSpark K=4 with the historical synthetic acceptance length of 3.36, FP8 KV cache, TokenSpeed MLA, FlashInfer autotuning, a 512-token maximum CUDA graph capture size, and the historical embedded Mooncake prefix store.
 
