@@ -56,6 +56,7 @@ for run_name in "${expected_runs[@]}"; do
     lock="${job_dir}/recipe.lock.yaml"
     fingerprint="${job_dir}/logs/fingerprint_agg_w0.json"
     benchmark="${job_dir}/logs/benchmark.out"
+    fill_result="${job_dir}/logs/profile-benchmark/cache_fill_isl131072_osl1_c64.json"
     result="${job_dir}/logs/profile-benchmark/results_isl131072_osl4096_c64.json"
 
     for path in \
@@ -64,6 +65,7 @@ for run_name in "${expected_runs[@]}"; do
         "${lock}" \
         "${benchmark}" \
         "${fingerprint}" \
+        "${fill_result}" \
         "${result}"; do
         require_file "${path}"
     done
@@ -85,6 +87,12 @@ for run_name in "${expected_runs[@]}"; do
         fail "${job_id}: unexpected vLLM version"
     grep -Fq "\"dynamo\": \"${EXPECTED_DYNAMO_VERSION}\"" "${fingerprint}" || \
         fail "${job_id}: unexpected Dynamo version"
+    grep -Fq '"flashinfer-python==0.6.17"' "${fingerprint}" || \
+        fail "${job_id}: flashinfer-python is not pinned to 0.6.17"
+    grep -Fq '"flashinfer-cubin==0.6.17"' "${fingerprint}" || \
+        fail "${job_id}: flashinfer-cubin is not pinned to 0.6.17"
+    grep -Eq '"flashinfer-jit-cache==0\.6\.17([+"]|$)' "${fingerprint}" || \
+        fail "${job_id}: flashinfer-jit-cache is not pinned to 0.6.17"
     grep -Fq "\"VLLM_IMAGE_TAG\": \"${EXPECTED_IMAGE}\"" "${fingerprint}" || \
         fail "${job_id}: runtime image fingerprint does not match"
 
@@ -101,6 +109,8 @@ for run_name in "${expected_runs[@]}"; do
 
     grep -Fq '"num_prompts": 64' "${result}" || \
         fail "${job_id}: unexpected prompt count in result"
+    grep -Fq '"completed": 64' "${fill_result}" || \
+        fail "${job_id}: cache fill did not complete 64 requests"
     grep -Fq '"completed": 64' "${result}" || \
         fail "${job_id}: result does not contain 64 completed requests"
     grep -Fq '"total_input_tokens": 8388608' "${result}" || \
@@ -115,7 +125,7 @@ for run_name in "${expected_runs[@]}"; do
     if find "${job_dir}/logs" -type f \
         \( -name '*.out' -o -name '*.log' \) \
         -exec grep -Eq \
-        'Traceback \(most recent call last\)|CUDA out of memory|WorkerProc hit an exception|Critical process failure|Server did not become healthy' \
+        'Traceback \(most recent call last\)|CUDA out of memory|illegal memory access|WorkerProc hit an exception|Critical process failure|Server did not become healthy' \
         {} +; then
         fail "${job_id}: fatal error found in logs"
     fi

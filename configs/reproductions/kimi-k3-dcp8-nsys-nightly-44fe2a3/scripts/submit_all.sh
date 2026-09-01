@@ -42,5 +42,5 @@ for config in "${configs[@]}"; do
     fi
     output_dir="${OUTPUT_ROOT}/${name}"
     echo "submitting ${name} -> ${output_dir}"
-    "${SRTCTL_BIN}" apply -f "${config}" -o "${output_dir}"
+    "${SRTCTL_BIN}" apply -y -f "${config}" -o "${output_dir}"
 done

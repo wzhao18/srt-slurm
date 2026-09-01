@@ -152,6 +152,24 @@ run_phase() {
         "${save_args[@]}"
 }
 
+require_completed_requests() {
+    local result_path="$1"
+    "${PYTHON_BIN}" - "${result_path}" "${NUM_PROMPTS}" <<'PY'
+import json
+import sys
+
+result_path, expected_text = sys.argv[1:]
+with open(result_path) as result_file:
+    result = json.load(result_file)
+completed = result.get("completed")
+expected = int(expected_text)
+if completed != expected:
+    raise SystemExit(
+        f"Expected {expected} completed requests in {result_path}, got {completed}"
+    )
+PY
+}
+
 wait_for_decode_window() {
     local marker="$1"
     local replay_pid="$2"
@@ -257,13 +275,20 @@ wait_for_eplb_rebalance() {
 mkdir -p /logs/profile-benchmark
 
 echo "Cache fill: dataset=${DATASET_NAME}, ${NUM_PROMPTS} prompts, ISL=${ISL}, OSL=${CACHE_FILL_OSL}, concurrency=${CONCURRENCY}"
+fill_result_name="cache_fill_isl${ISL}_osl${CACHE_FILL_OSL}_c${CONCURRENCY}.json"
 if [[ "${DATASET_NAME}" == "sonnet" ]]; then
-    run_phase "${CACHE_FILL_OSL}" "" save
+    run_phase "${CACHE_FILL_OSL}" "${fill_result_name}" save
 else
-    run_phase "${CACHE_FILL_OSL}"
+    run_phase "${CACHE_FILL_OSL}" "${fill_result_name}"
 fi
+require_completed_requests "/logs/profile-benchmark/${fill_result_name}"
 
 echo "Cache fill complete; launching the identical-prompt replay"
+if [[ "${PROFILE_FILL_ONLY:-0}" == "1" ]]; then
+    echo "Fill-only validation complete"
+    trap - EXIT
+    exit 0
+fi
 echo "Profile replay: dataset=${DATASET_NAME}, ${NUM_PROMPTS} prompts, ISL=${ISL}, OSL=${REPLAY_OSL}, concurrency=${CONCURRENCY}"
 decode_marker="/logs/profile-benchmark/decode-active-c${DECODE_ACTIVE_TARGET}"
 rm -f "${decode_marker}"

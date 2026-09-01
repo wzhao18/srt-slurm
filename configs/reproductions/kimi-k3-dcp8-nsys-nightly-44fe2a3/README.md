@@ -12,6 +12,7 @@ This bundle reproduces the DCP8 decode traces represented by the four runs below
 The runtime is intentionally independent of a local vLLM or Dynamo checkout. All four recipes use:
 
 - `vllm/vllm-openai:nightly-44fe2a392b71d52a8d72faf2f8278834379482c9`
+- FlashInfer Python, cubin, and CUDA 13 JIT-cache packages at version `0.6.17`
 - Dynamo commit `ba83080ecd31c1ce918559e576d3c5bc9e092ff1`, installed
   into the job container by `srt-slurm`
 - Nsight Systems CLI 2025.4.1, mounted read-only from the cluster installation
@@ -22,6 +23,16 @@ The runtime is intentionally independent of a local vLLM or Dynamo checkout. All
 overlay. It does not read or modify the submitter's local vLLM or Dynamo
 virtual environments. The pinned commit reports package version `1.3.0` at
 runtime and contains the Kimi-K3 frontend tokenizer support required here.
+
+The nightly image is the immutable base runtime, but it contains FlashInfer
+0.6.18. That version reproducibly hit a CUDA illegal-memory-access failure in
+the TRTLLM ragged MLA prefill path after 53 of the 64 long-prefill requests.
+The historical successful traces used FlashInfer 0.6.17. Each recipe therefore
+runs the bundled setup script inside its job-container overlay to pin all three
+FlashInfer packages to 0.6.17 before vLLM starts. This does not modify the image,
+the host Python installation, or a local virtual environment. The artifact
+audit verifies the three effective package versions from the runtime
+fingerprint.
 
 The benchmark wrapper supplies fail-closed stubs for the unused Hugging Face Dataset and pandas CSV loaders. The random-token and Sonnet modes do not call either loader, so this avoids installing optional client packages into the runtime image while still failing clearly if an unsupported dataset mode is selected.
 
@@ -44,7 +55,7 @@ Run that command inside the image with this checkout's `configs/` mounted at
 Kimi checkpoint at `/model`. It generates exact 512-token prompts and verifies
 that the finalized prompt list survives a save/load round trip unchanged.
 
-There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.venv` in these recipes. The only local inputs are the three model snapshots, the checked-out `srt-slurm` source, and the cluster's Nsight Systems installation. The pinned nightly image does not contain `nsys`, so the recipes mount the complete CLI installation instead of borrowing a Python environment.
+There is no vLLM source mount, `PYTHONPATH`, `VIRTUAL_ENV`, or local runtime `.venv` in these recipes. The only local inputs are the three model snapshots, the checked-out `srt-slurm` source, and the cluster's Nsight Systems installation. Runtime package downloads come from the public FlashInfer wheel indexes and use a job-local cache under `/tmp`. The pinned nightly image does not contain `nsys`, so the recipes mount the complete CLI installation instead of borrowing a Python environment.
 
 ## Hardware and software prerequisites
 
@@ -131,8 +142,9 @@ For Sonnet runs, it also contains `logs/profile-benchmark/sonnet-input-requests.
 Before accepting a trace, verify:
 
 1. `fingerprint_agg_w0.json` reports the vLLM version from the pinned image and
-   Dynamo package version `1.3.0`; `config.yaml` and `recipe.lock.yaml` record
-   Dynamo commit `ba83080ecd31c1ce918559e576d3c5bc9e092ff1`.
+   Dynamo package version `1.3.0` and all three FlashInfer packages at `0.6.17`;
+   `config.yaml` and `recipe.lock.yaml` record Dynamo commit
+   `ba83080ecd31c1ce918559e576d3c5bc9e092ff1`.
 2. `benchmark.out` reports the container `python3`, not a Lustre virtual environment.
 3. `benchmark.out` reaches the decode-only window and exits successfully.
 4. Both `.nsys-rep` files are non-empty and `nsys stats` can open them.
