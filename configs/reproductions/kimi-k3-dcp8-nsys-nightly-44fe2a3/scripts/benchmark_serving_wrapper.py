@@ -4,6 +4,7 @@ import os
 import runpy
 import sys
 import types
+from importlib.machinery import ModuleSpec
 from pathlib import Path
 from typing import NoReturn
 
@@ -23,9 +24,11 @@ benchmark_path = Path(
     )
 )
 datasets_module = types.ModuleType("datasets")
+datasets_module.__spec__ = ModuleSpec("datasets", loader=None)
 datasets_module.load_dataset = _unsupported_load_dataset
 sys.modules["datasets"] = datasets_module
 pandas_module = types.ModuleType("pandas")
+pandas_module.__spec__ = ModuleSpec("pandas", loader=None)
 pandas_module.read_csv = _unsupported_read_csv
 sys.modules["pandas"] = pandas_module
 sys.path.insert(0, str(benchmark_path.parent))
