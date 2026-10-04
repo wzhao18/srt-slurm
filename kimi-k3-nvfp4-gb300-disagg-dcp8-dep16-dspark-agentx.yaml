@@ -88,7 +88,7 @@ backend:
       mode: "embedded"
       enable_offload: false
   prefill_environment: &kimi_env
-    VLLM_TOKENSPEED_MLA_MIN_SPLIT_KV: "8"
+    VLLM_TOKENSPEED_MLA_MIN_SPLIT_KV: "1"
     PATH: "/lustre/fsw/portfolios/coreai/projects/coreai_comparch_inferencex/users/weizha/vllm/.venv/bin:/usr/local/lib/python3.12/dist-packages/torch_tensorrt/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/mpi/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/ucx/bin:/opt/amazon/efa/bin:/opt/tensorrt/bin:/opt/mellanox/doca/tools/"
     VIRTUAL_ENV: "/lustre/fsw/portfolios/coreai/projects/coreai_comparch_inferencex/users/weizha/vllm/.venv"
     LD_LIBRARY_PATH: "/lustre/fsw/portfolios/coreai/projects/coreai_comparch_inferencex/users/weizha/vllm/.venv/lib/python3.12/site-packages/torch/lib:/usr/local/cuda/compat/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
