@@ -230,7 +230,7 @@ srun_options:
 benchmark:
   type: custom
   client_placement: head
-  concurrencies: [64,96,128]
+  concurrencies: [64, 96, 128]
   command: "bash /configs/agentic_srt_offline.sh"
   env:
     AIPERF_UV_CACHE_ARCHIVE: "/lustre/fsw/portfolios/coreai/projects/coreai_comparch_inferencex/users/weizha/vllm/.cache/aiperf-uv.tar.gz"
@@ -251,8 +251,8 @@ benchmark:
     CONC: "64"
     CONC_LIST: "64 96 128"
     DURATION: "1800"
-    RESULT_FILENAME: "kimi-k3_nvfp4_dynamo-vllm_2p1d_dcp8_dep16_dspark4_megamoe_tokenspeed-mla_mooncake"
-    # Per-role topology: GPUs = 2 * prefill 8 + decode 16 = 32.
+    RESULT_FILENAME: "kimi-k3_nvfp4_dynamo-vllm_2p1d_dcp8_dep16_dspark4_megamoe_min8_tokenspeed-mla_mooncake"
+    # Total GPUs: 2 * 8 prefill + 16 decode = 32 (NVL72 cap).
     PREFILL_NUM_WORKERS: "2"
     PREFILL_TP: "8"
     PREFILL_EP: "1"

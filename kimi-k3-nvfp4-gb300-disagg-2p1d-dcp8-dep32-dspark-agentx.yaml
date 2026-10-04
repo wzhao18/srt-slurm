@@ -1,4 +1,4 @@
-name: "kimi-k3-nvfp4-1p1d-dcp8-dep16-dspark4-megamoe-agentx"
+name: "kimi-k3-nvfp4-2p1d-dcp8-dep32-dspark4-megamoe-agentx"
 
 model:
   path: "/scratch/fsw/portfolios/coreai/projects/coreai_comparch_inferencex/users/weizha/models/kimi-k3-nvfp4-model"
@@ -43,12 +43,12 @@ health_check:
 resources:
   gpu_type: "gb300"
   gpus_per_node: 4
-  prefill_nodes: 2
-  decode_nodes: 4
-  prefill_workers: 1
+  prefill_nodes: 4
+  decode_nodes: 8
+  prefill_workers: 2
   decode_workers: 1
   gpus_per_prefill: 8
-  gpus_per_decode: 16
+  gpus_per_decode: 32
 
 infra:
   etcd_nats_dedicated_node: false
@@ -203,7 +203,7 @@ backend:
       mamba-ssm-cache-dtype: bfloat16
       gpu-memory-utilization: 0.92
       tensor-parallel-size: 1
-      data-parallel-size: 16
+      data-parallel-size: 32
       data-parallel-rpc-port: 13345
       enable-expert-parallel: true
       enable-ep-weight-filter: true
@@ -230,7 +230,7 @@ srun_options:
 benchmark:
   type: custom
   client_placement: head
-  concurrencies: [64, 96, 128]
+  concurrencies: [128, 192, 256]
   command: "bash /configs/agentic_srt_offline.sh"
   env:
     AIPERF_UV_CACHE_ARCHIVE: "/lustre/fsw/portfolios/coreai/projects/coreai_comparch_inferencex/users/weizha/vllm/.cache/aiperf-uv.tar.gz"
@@ -248,12 +248,12 @@ benchmark:
     MODEL_PREFIX: "kimi-k3"
     FRAMEWORK: "dynamo-vllm"
     PRECISION: "nvfp4"
-    CONC: "64"
-    CONC_LIST: "64 96 128"
+    CONC: "128"
+    CONC_LIST: "128 192 256"
     DURATION: "1800"
-    RESULT_FILENAME: "kimi-k3_nvfp4_dynamo-vllm_1p1d_dcp8_dep16_dspark4_megamoe_min8_tokenspeed-mla_mooncake"
-    # Total GPUs: 1 * 8 prefill + 16 decode = 24 (NVL72 cap).
-    PREFILL_NUM_WORKERS: "1"
+    RESULT_FILENAME: "kimi-k3_nvfp4_dynamo-vllm_2p1d_dcp8_dep32_dspark4_megamoe_min8_tokenspeed-mla_mooncake"
+    # Total GPUs: 2 * 8 prefill + 32 decode = 48 (NVL72 cap).
+    PREFILL_NUM_WORKERS: "2"
     PREFILL_TP: "8"
     PREFILL_EP: "1"
     # benchmark_lib.sh:1097 reads PREFILL_DCP_SIZE into the result JSON's
@@ -261,8 +261,8 @@ benchmark:
     PREFILL_DCP_SIZE: "8"
     PREFILL_DP_ATTENTION: "false"
     DECODE_NUM_WORKERS: "1"
-    DECODE_TP: "16"
-    DECODE_EP: "16"
+    DECODE_TP: "32"
+    DECODE_EP: "32"
     DECODE_DCP_SIZE: "1"
     DECODE_DP_ATTENTION: "true"
     KV_OFFLOADING: "dram"
