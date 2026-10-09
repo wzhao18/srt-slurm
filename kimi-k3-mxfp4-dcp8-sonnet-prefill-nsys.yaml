@@ -130,7 +130,8 @@ profiling:
     - "--cpuctxsw=none"
   aggregated:
     start_step: 0
-    stop_step: 3
+    # Stop after the extension completes; empty connector calls count as worker steps.
+    stop_step: null
 
 sbatch_directives:
   mem: "0"
