@@ -16,6 +16,12 @@ if needed, `PROFILE_PYTHON_BIN` (defaults to `python3`). The interpreter must
 have the benchmark dependencies and the model tokenizer installed.
 The frontend address and profiling endpoints are supplied by srtctl.
 
+For repeated runs with FlashInfer autotuning enabled, set the worker environment
+variable `VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR` to a persistent writable directory.
+Job-specific temporary cache directories do not reuse previous tuning results.
+First-time tuning can still compile CuTeDSL kernel candidates on the CPU;
+an idle GPU during this stage does not by itself establish a startup hang.
+
 ## Prefill
 
 Set `PROFILE_TOKENIZER_PATH` (default `/model`), `PROFILE_TEXT_CORPUS_PATH`,
