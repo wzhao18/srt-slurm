@@ -10,7 +10,19 @@ trap stop_all_profiling EXIT
 
 "${PYTHON_BIN}" -u "${CLIENT}" prepare
 "${PYTHON_BIN}" -u "${CLIENT}" seed
+snapshot_metrics() {
+    local phase="$1"
+    local endpoint
+    for endpoint in ${PROFILE_AGG_ENDPOINTS}; do
+        endpoint="$(profiling__normalize_endpoint "${endpoint}" "${WORKER_PORT}")"
+        curl --max-time 10 -fsS "http://${endpoint}/metrics" \
+            >"/logs/profile-benchmark/prefill-${phase}-metrics-${endpoint//:/_}.txt" \
+            || echo "Worker metrics unavailable at ${endpoint}; verify cache reuse from engine logs."
+    done
+}
+snapshot_metrics before
 start_all_profiling
 "${PYTHON_BIN}" -u "${CLIENT}" extend
 stop_all_profiling
+snapshot_metrics after
 trap - EXIT
