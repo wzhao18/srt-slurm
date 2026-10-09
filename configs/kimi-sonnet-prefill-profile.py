@@ -60,7 +60,10 @@ def main() -> None:
     if phase == "extend" and cached is not None and cached < seed_len - 256:
         raise ValueError(f"Expected seeded-prefix reuse, got cached_tokens={cached}")
     if phase == "extend" and cached is None:
-        print("Cache-hit details absent in frontend response; verify engine prefix-cache metrics before accepting trace.")
+        print(
+            "Cache-hit details absent in frontend response; "
+            "verify engine prefix-cache metrics before accepting trace."
+        )
 
 
 if __name__ == "__main__":
