@@ -12,6 +12,10 @@ ENGINE_RUNNING_TARGET="${PROFILE_ENGINE_RUNNING_TARGET:-${CONCURRENCY}}"
 ENGINE_STABLE_SAMPLES="${PROFILE_ENGINE_STABLE_SAMPLES:-3}"
 NUM_PROMPTS="${PROFILE_NUM_PROMPTS:-${CONCURRENCY}}"
 SEED="${PROFILE_SEED:-0}"
+DATASET_NAME="${PROFILE_DATASET_NAME:-random}"
+TEXT_CORPUS_PATH="${PROFILE_TEXT_CORPUS_PATH:-}"
+SONNET_PREFIX_LEN="${PROFILE_SONNET_PREFIX_LEN:-128}"
+DECODE_WINDOW_TIMEOUT="${PROFILE_DECODE_WINDOW_TIMEOUT:-1800}"
 MODEL_NAME="${PROFILE_MODEL_NAME:-moonshotai/Kimi-K3}"
 TOKENIZER_PATH="${PROFILE_TOKENIZER_PATH:-/model}"
 ENDPOINT="http://${SRT_FRONTEND_HOST}:${SRT_FRONTEND_PORT}"
@@ -49,6 +53,10 @@ fi
 
 source /srtctl-benchmarks/lib/profiling.sh
 profiling_init_from_env
+if [[ "${PROFILE_TYPE}" != nsys || -z "${PROFILE_AGG_ENDPOINTS}" ]]; then
+    echo "Decode trace collection requires nsys and an aggregated worker endpoint" >&2
+    exit 1
+fi
 
 cleanup() {
     stop_all_profiling
@@ -63,6 +71,28 @@ run_phase() {
     local output_len="$1"
     local result_file="${2:-}"
     local -a save_args=()
+    local -a dataset_args=()
+    case "${DATASET_NAME}" in
+        random)
+            dataset_args=(--dataset-name random --random-input-len "${ISL}"
+                --random-output-len "${output_len}" --random-range-ratio 1.0 --random-num-workers 8)
+            ;;
+        sonnet)
+            if [[ ! -r "${TEXT_CORPUS_PATH}" ]]; then
+                echo "Sonnet corpus is unavailable: ${TEXT_CORPUS_PATH}" >&2
+                return 1
+            fi
+            dataset_args=(--dataset-name sonnet --dataset-path "${TEXT_CORPUS_PATH}"
+                --sonnet-input-len "${ISL}" --sonnet-output-len "${output_len}"
+                --sonnet-prefix-len "${SONNET_PREFIX_LEN}" --sonnet-exact-input-len)
+            if [[ -f /logs/profile-benchmark/sonnet-input-requests.json ]]; then
+                dataset_args+=(--load-input-requests /logs/profile-benchmark/sonnet-input-requests.json)
+            else
+                dataset_args+=(--save-input-requests /logs/profile-benchmark/sonnet-input-requests.json)
+            fi
+            ;;
+        *) echo "Unsupported profile dataset: ${DATASET_NAME}" >&2; return 1 ;;
+    esac
     if [[ -n "${result_file}" ]]; then
         save_args=(
             --save-result
@@ -77,11 +107,7 @@ run_phase() {
         --base-url "${ENDPOINT}" \
         --backend dynamo \
         --endpoint /v1/completions \
-        --dataset-name random \
-        --random-input-len "${ISL}" \
-        --random-output-len "${output_len}" \
-        --random-range-ratio 1.0 \
-        --random-num-workers 8 \
+        "${dataset_args[@]}" \
         --num-prompts "${NUM_PROMPTS}" \
         --max-concurrency "${CONCURRENCY}" \
         --request-rate inf \
@@ -97,7 +123,7 @@ run_phase() {
 wait_for_decode_window() {
     local marker="$1"
     local replay_pid="$2"
-    local deadline=$((SECONDS + 600))
+    local deadline=$((SECONDS + DECODE_WINDOW_TIMEOUT))
 
     while kill -0 "${replay_pid}" 2>/dev/null; do
         if [[ -e "${marker}" ]]; then
@@ -117,7 +143,7 @@ wait_for_decode_window() {
 
 wait_for_stable_engine_batch() {
     local replay_pid="$1"
-    local deadline=$((SECONDS + 600))
+    local deadline=$((SECONDS + DECODE_WINDOW_TIMEOUT))
     local stable_samples=0
     local last_sample_count=0
     local sample_count=0
