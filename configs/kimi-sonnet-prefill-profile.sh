@@ -13,7 +13,9 @@ trap stop_all_profiling EXIT
 snapshot_metrics() {
     local phase="$1"
     local endpoint
-    for endpoint in ${PROFILE_AGG_ENDPOINTS}; do
+    local -a endpoints=()
+    IFS=',' read -r -a endpoints <<<"${PROFILE_AGG_ENDPOINTS}"
+    for endpoint in "${endpoints[@]}"; do
         endpoint="$(profiling__normalize_endpoint "${endpoint}" "${WORKER_PORT}")"
         curl --max-time 10 -fsS "http://${endpoint}/metrics" \
             >"/logs/profile-benchmark/prefill-${phase}-metrics-${endpoint//:/_}.txt" \
