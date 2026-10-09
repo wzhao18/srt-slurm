@@ -32,7 +32,7 @@ def main() -> None:
         extend_ids = tokenizer.encode(prompts["extend"], add_special_tokens=False)
         if len(seed_ids) != seed_len or len(extend_ids) != target:
             raise ValueError("Tokenizer round trip changed the requested Sonnet lengths")
-        shared = next((i for i, (a, b) in enumerate(zip(seed_ids, extend_ids)) if a != b), len(seed_ids))
+        shared = next((i for i, (a, b) in enumerate(zip(seed_ids, extend_ids, strict=False)) if a != b), len(seed_ids))
         if shared < seed_len - 128:
             raise ValueError(f"Extension changes the seeded prefix: shared={shared}, seed={seed_len}")
         (root / "prefill-prompts.json").write_text(json.dumps(prompts))
@@ -61,8 +61,7 @@ def main() -> None:
         raise ValueError(f"Expected seeded-prefix reuse, got cached_tokens={cached}")
     if phase == "extend" and cached is None:
         print(
-            "Cache-hit details absent in frontend response; "
-            "verify engine prefix-cache metrics before accepting trace."
+            "Cache-hit details absent in frontend response; verify engine prefix-cache metrics before accepting trace."
         )
 
 
