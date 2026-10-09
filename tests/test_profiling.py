@@ -445,17 +445,25 @@ class TestVllmNsysProfilerConfig:
             return None
         return json.loads(cmd[cmd.index("--profiler-config") + 1])
 
-    def test_iteration_nsys_injects_profiler_config(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "start_step,stop_step,delay_iterations,max_iterations",
+        [(10, 30, 10, 20), (0, None, 0, 0), (10, None, 10, 0), (None, None, 0, 0)],
+    )
+    def test_iteration_nsys_injects_profiler_config(
+        self, monkeypatch, start_step, stop_step, delay_iterations, max_iterations
+    ):
         """type: nsys with phase steps -> vLLM engine drives cudaProfilerStart at those steps."""
         from srtctl.core.schema import ProfilingConfig, ProfilingPhaseConfig
 
-        profiling = ProfilingConfig(type="nsys", decode=ProfilingPhaseConfig(start_step=10, stop_step=30))
+        profiling = ProfilingConfig(
+            type="nsys", decode=ProfilingPhaseConfig(start_step=start_step, stop_step=stop_step)
+        )
         cmd = self._build_decode_cmd(profiling, monkeypatch)
 
         assert self._profiler_config(cmd) == {
             "profiler": "cuda",
-            "delay_iterations": 10,
-            "max_iterations": 20,
+            "delay_iterations": delay_iterations,
+            "max_iterations": max_iterations,
         }
 
     def test_nsys_time_does_not_inject_profiler_config(self, monkeypatch):

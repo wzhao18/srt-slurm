@@ -866,7 +866,7 @@ class VLLMProtocol:
 
         if profiling is not None and profiling.is_nsys and not profiling.is_nsys_time:
             phase = profiling._get_phase_config(mode)
-            if phase is not None and phase.start_step is not None and phase.stop_step is not None:
+            if phase is not None:
                 config["profiler-config"] = json.dumps(
                     {
                         "profiler": "cuda",
