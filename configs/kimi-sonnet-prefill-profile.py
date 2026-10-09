@@ -17,7 +17,9 @@ def main() -> None:
     if phase == "prepare":
         from transformers import AutoTokenizer
 
-        tokenizer = AutoTokenizer.from_pretrained(os.environ.get("PROFILE_TOKENIZER_PATH", "/model"))
+        tokenizer = AutoTokenizer.from_pretrained(
+            os.environ.get("PROFILE_TOKENIZER_PATH", "/model"), trust_remote_code=True
+        )
         corpus = Path(os.environ["PROFILE_TEXT_CORPUS_PATH"]).read_text()
         tokens = tokenizer.encode(corpus, add_special_tokens=False)
         if not tokens:
