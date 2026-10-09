@@ -44,7 +44,7 @@ def main() -> None:
         raise ValueError(f"Unknown phase: {phase}")
     prompts = json.loads((root / "prefill-prompts.json").read_text())
     payload = {
-        "model": os.environ.get("PROFILE_MODEL_NAME", "moonshotai/Kimi-K3"),
+        "model": os.environ["PROFILE_MODEL_NAME"],
         "prompt": prompts[phase],
         "max_tokens": 1,
         "temperature": 0,

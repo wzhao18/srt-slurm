@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-PYTHON_BIN="${PROFILE_REPO_VENV:-/lustre/fsw/portfolios/coreai/projects/coreai_comparch_inferencex/users/weizha/vllm/.venv}/bin/python"
-CLIENT=/configs/kimi-sonnet-prefill-profile.py
+PYTHON_BIN="${PROFILE_PYTHON_BIN:-python3}"
+CLIENT=/srtctl-benchmarks/profiling/prefill_client.py
 source /srtctl-benchmarks/lib/profiling.sh
 profiling_init_from_env
 [[ "${PROFILE_TYPE}" == nsys && -n "${PROFILE_AGG_ENDPOINTS}" ]]

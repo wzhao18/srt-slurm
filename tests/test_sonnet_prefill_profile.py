@@ -11,7 +11,7 @@ import pytest
 
 @pytest.mark.parametrize("cached_tokens,accepted", [(130944, True), (0, False)])
 def test_prefill_extension_requires_seeded_prefix(monkeypatch, cached_tokens, accepted):
-    script = Path(__file__).resolve().parents[1] / "configs/kimi-sonnet-prefill-profile.py"
+    script = Path(__file__).resolve().parents[1] / "src/srtctl/benchmarks/scripts/profiling/prefill_client.py"
     spec = importlib.util.spec_from_file_location("prefill_profile", script)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -22,6 +22,7 @@ def test_prefill_extension_requires_seeded_prefix(monkeypatch, cached_tokens, ac
     monkeypatch.setenv("SRT_FRONTEND_HOST", "localhost")
     monkeypatch.setenv("SRT_FRONTEND_PORT", "8000")
     monkeypatch.setenv("PROFILE_ISL", "131072")
+    monkeypatch.setenv("PROFILE_MODEL_NAME", "test-model")
 
     def complete(request, timeout):
         payload = json.loads(request.data)
