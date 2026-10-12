@@ -561,3 +561,13 @@ class TestDynamoFrontendEventPlane:
     def test_explicit_injected(self, event_plane):
         mock_srun = _dynamo_frontend_call(dynamo_install=False, event_plane=event_plane)
         assert mock_srun.call_args.kwargs["env_to_set"]["DYN_EVENT_PLANE"] == event_plane
+
+
+def test_dynamo_frontend_is_restarted_after_unexpected_exit():
+    mock_srun = _dynamo_frontend_call(dynamo_install=False)
+    command = mock_srun.call_args.kwargs["command"]
+
+    assert command[:2] == ["bash", "-c"]
+    assert "python3 -m dynamo.frontend --http-port=8180" in command[2]
+    assert "restarting ($restarts/3)" in command[2]
+    assert '[ "$status" -ne 0 ] || status=1' in command[2]

@@ -24,6 +24,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_MAX_FRONTEND_RESTARTS = 3
+_FRONTEND_RESTART_DELAY_SECONDS = 5
+
+
+def _supervise_frontend(command: list[str]) -> list[str]:
+    """Restart a frontend that exits unexpectedly, then fail after a limit."""
+    frontend_command = shlex.join(command)
+    script = f"""
+restarts=0
+while true; do
+    {frontend_command}
+    status=$?
+    if [ "$restarts" -ge {_MAX_FRONTEND_RESTARTS} ]; then
+        [ "$status" -ne 0 ] || status=1
+        exit "$status"
+    fi
+    restarts=$((restarts + 1))
+    echo "Dynamo frontend exited with status $status; restarting ($restarts/{_MAX_FRONTEND_RESTARTS})" >&2
+    sleep {_FRONTEND_RESTART_DELAY_SECONDS}
+done
+""".strip()
+    return ["bash", "-c", script]
+
 
 class DynamoFrontend:
     """Dynamo frontend implementation.
@@ -79,8 +102,14 @@ class DynamoFrontend:
             logger.info("Starting dynamo frontend %d on %s", idx, node)
 
             frontend_log = runtime.log_dir / f"{node}_frontend_{idx}.out"
-            cmd = ["python3", "-m", "dynamo.frontend", f"--http-port={topology.frontend_port}"]
-            cmd.extend(self.get_frontend_args_list(config.frontend.args))
+            frontend_cmd = [
+                "python3",
+                "-m",
+                "dynamo.frontend",
+                f"--http-port={topology.frontend_port}",
+            ]
+            frontend_cmd.extend(self.get_frontend_args_list(config.frontend.args))
+            cmd = _supervise_frontend(frontend_cmd)
 
             env_to_set = {
                 "ETCD_ENDPOINTS": f"http://{runtime.nodes.infra}:{ETCD_CLIENT_PORT}",
