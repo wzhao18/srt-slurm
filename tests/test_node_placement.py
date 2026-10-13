@@ -128,7 +128,9 @@ def test_frontend_default_head_does_not_touch_processes():
 
 
 def test_frontend_orchestrator_on_first_decode():
-    orch = SweepOrchestrator(config=_config(orchestrator_placement="first_decode"), runtime=_runtime(["p0", "g0", "g1"]))
+    orch = SweepOrchestrator(
+        config=_config(orchestrator_placement="first_decode"), runtime=_runtime(["p0", "g0", "g1"])
+    )
     with patch.object(type(orch), "backend_processes", new_callable=PropertyMock, return_value=_PROCS):
         topo = orch._compute_frontend_topology()
     assert topo.frontend_nodes == ["g0"]
@@ -144,19 +146,34 @@ def test_benchmark_client_on_last_decode_and_orchestrator_first_decode():
         assert orch._benchmark_node() == "g1"
 
 
-def test_benchmark_env_injects_frontend_host():
+@pytest.mark.parametrize("require_worker_metrics", [False, True])
+def test_benchmark_env_injects_frontend_host(require_worker_metrics):
+    from dataclasses import replace
     from unittest.mock import MagicMock
 
     orch = SweepOrchestrator(
         config=_config(orchestrator_placement="first_decode", client_placement="last_decode"),
         runtime=_runtime(["p0", "g0", "g1"]),
     )
+    if require_worker_metrics:
+        orch.config = replace(
+            orch.config,
+            benchmark=replace(orch.config.benchmark, env={"AIPERF_REQUIRED_SERVER_METRIC_PREFIX": "vllm:"}),
+        )
+    processes = [replace(process, sys_port=9000 + i) for i, process in enumerate(_PROCS)]
+    processes.append(replace(_proc("g2", "decode", 1, rank=1), sys_port=9003))
     runner = MagicMock()
     runner.name = "custom"
     with (
-        patch.object(type(orch), "backend_processes", new_callable=PropertyMock, return_value=_PROCS),
+        patch.object(type(orch), "backend_processes", new_callable=PropertyMock, return_value=processes),
         patch("srtctl.cli.mixins.benchmark_stage.get_hostname_ip", side_effect=lambda n, *a, **k: f"ip-{n}"),
     ):
         env = orch._get_benchmark_env(runner)
     assert env["SRT_FRONTEND_HOST"] == "ip-g0"
     assert env["SRT_FRONTEND_PORT"] == "8000"
+    if require_worker_metrics:
+        assert env["AIPERF_SERVER_METRICS_URLS"] == (
+            "http://ip-g0:9001/metrics,http://ip-g1:9002/metrics,http://ip-p0:9000/metrics"
+        )
+    else:
+        assert "AIPERF_SERVER_METRICS_URLS" not in env

@@ -426,7 +426,7 @@ class BenchmarkStageMixin:
         """
         urls: list[str] = []
         for process in self.backend_processes:
-            if process.sys_port > 0:
+            if process.is_leader and process.sys_port > 0:
                 host = get_hostname_ip(process.node, self.runtime.network_interface)
                 urls.append(f"http://{host}:{process.sys_port}/metrics")
 
@@ -468,10 +468,12 @@ class BenchmarkStageMixin:
         if runner.name == "SA-Bench":
             env.update(self._get_sa_bench_slow_down_env())
 
-        # Add AIPerf-specific env vars for AIPerf-driven benchmarks only
-        if isinstance(runner, AIPerfBenchmarkRunner):
+        # Custom AgentX wrappers can opt into the same worker-metrics endpoints.
+        if isinstance(runner, AIPerfBenchmarkRunner) or self.config.benchmark.env.get(
+            "AIPERF_REQUIRED_SERVER_METRIC_PREFIX"
+        ):
             env.update(self._get_aiperf_server_metrics_env())
-            if self.config.benchmark.aiperf_package:
-                env["AIPERF_PACKAGE"] = self.config.benchmark.aiperf_package
+        if isinstance(runner, AIPerfBenchmarkRunner) and self.config.benchmark.aiperf_package:
+            env["AIPERF_PACKAGE"] = self.config.benchmark.aiperf_package
 
         return env
