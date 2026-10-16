@@ -573,6 +573,7 @@ class VLLMProtocol:
                             bootstrap_port=bootstrap_port,
                             kv_events_port=kv_events_port,
                             nixl_port=nixl_port,
+                            het_group=endpoint.het_group,
                         )
                     )
                     current_sys_port += 1
@@ -612,6 +613,7 @@ class VLLMProtocol:
                                 kv_events_port=kv_events_port,
                                 nixl_port=nixl_port,
                                 dp_rpc_port=dp_rpc_port,
+                                het_group=endpoint.het_group,
                             )
                         )
                         current_sys_port += 1

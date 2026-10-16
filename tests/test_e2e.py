@@ -1097,6 +1097,40 @@ backend:
 class TestGB200HetAsymmetric:
     """End-to-end test of het-job nodelist parsing + endpoint allocation."""
 
+    @pytest.mark.parametrize("dp_launch_mode", ["per_gpu", "per_node", "multinode"])
+    def test_vllm_mixed_tp_dp_preserves_het_groups(self, dp_launch_mode):
+        """TP prefill and DP decode must launch in their own allocation components."""
+        from srtctl.backends import VLLMProtocol, VLLMServerConfig
+        from srtctl.core.topology import allocate_endpoints_het
+
+        prefill_nodes = ("p0", "p1", "p2", "p3")
+        decode_nodes = ("d0", "d1", "d2", "d3")
+        backend = VLLMProtocol(
+            dp_launch_mode=dp_launch_mode,
+            vllm_config=VLLMServerConfig(
+                prefill={"tensor-parallel-size": 8},
+                decode={"tensor-parallel-size": 1, "data-parallel-size": 16},
+            ),
+        )
+        endpoints = allocate_endpoints_het(
+            num_prefill=2,
+            gpus_per_prefill=8,
+            prefill_nodes=prefill_nodes,
+            num_decode=1,
+            gpus_per_decode=16,
+            decode_nodes=decode_nodes,
+            gpus_per_node=4,
+        )
+        processes = backend.endpoints_to_processes(endpoints)
+        prefill = [p for p in processes if p.endpoint_mode == "prefill"]
+        decode = [p for p in processes if p.endpoint_mode == "decode"]
+        assert {p.node for p in prefill} == set(prefill_nodes)
+        assert {p.node for p in decode} == set(decode_nodes)
+        assert {p.het_group for p in prefill} == {0}
+        assert {p.het_group for p in decode} == {1}
+        assert len(prefill) == 4
+        assert len(decode) == (16 if dp_launch_mode == "per_gpu" else 4)
+
     def test_nodes_carves_into_two_components(self):
         from srtctl.core.runtime import Nodes
 

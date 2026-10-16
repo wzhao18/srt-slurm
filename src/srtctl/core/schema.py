@@ -1584,9 +1584,9 @@ class SrtConfig:
             )
         if (self.resources.prefill_nodes or 0) < 1 or (self.resources.decode_nodes or 0) < 1:
             raise ValidationError("het_jobs=true requires prefill_nodes >= 1 and decode_nodes >= 1")
-        if self.backend_type != "sglang":
+        if self.backend_type not in ("sglang", "vllm"):
             raise ValidationError(
-                f"het_jobs=true is only supported on the sglang backend; got backend.type={self.backend_type!r}"
+                f"het_jobs=true is only supported on the sglang and vllm backends; got backend.type={self.backend_type!r}"
             )
 
     def _validate_mooncake_kv_store(self):

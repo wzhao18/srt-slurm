@@ -1570,8 +1570,13 @@ class TestHetJobsValidation:
             kwargs["backend"] = backend
         return SrtConfig, kwargs
 
-    def test_het_jobs_passes_with_disagg_sglang(self):
+    @pytest.mark.parametrize("backend_type", ["sglang", "vllm"])
+    def test_het_jobs_passes_with_disagg(self, backend_type):
+        from srtctl.backends import VLLMProtocol
+
         SrtConfig, kwargs = self._make()
+        if backend_type == "vllm":
+            kwargs["backend"] = VLLMProtocol()
         cfg = SrtConfig(**kwargs)
         assert cfg.resources.het_jobs is True
 
@@ -1597,7 +1602,7 @@ class TestHetJobsValidation:
         from srtctl.backends import TRTLLMProtocol
 
         SrtConfig, kwargs = self._make(backend=TRTLLMProtocol())
-        with pytest.raises(ValidationError, match="only supported on the sglang backend"):
+        with pytest.raises(ValidationError, match="only supported on the sglang and vllm backends"):
             SrtConfig(**kwargs)
 
     def test_het_jobs_rejected_with_zero_nodes(self):
